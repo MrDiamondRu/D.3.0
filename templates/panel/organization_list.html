@@ -1,0 +1,90 @@
+{% extends "panel/base.html" %}
+
+{% block title %}Организации | {{ panel_title }}{% endblock %}
+
+{% block content %}
+  <section class="panel-toolbar">
+    <form method="get" class="panel-filters">
+      <input
+        type="text"
+        name="q"
+        value="{{ search_query }}"
+        class="panel-input panel-input-compact panel-search-compact"
+        placeholder="Поиск..."
+      >
+      <select name="organization_type" class="panel-input panel-select">
+        <option value="">Тип организации: все</option>
+        {% for organization_type in organization_types %}
+          <option value="{{ organization_type.pk }}" {% if selected_organization_type == organization_type.pk|stringformat:"s" %}selected{% endif %}>
+            {{ organization_type.name }}
+          </option>
+        {% endfor %}
+      </select>
+      <select name="status" class="panel-input panel-select">
+        <option value="">Статус: все</option>
+        {% for status in organization_statuses %}
+          <option value="{{ status.pk }}" {% if selected_status == status.pk|stringformat:"s" %}selected{% endif %}>
+            {{ status.name }}
+          </option>
+        {% endfor %}
+      </select>
+      <button class="panel-btn panel-btn-secondary" type="submit">Применить фильтры</button>
+      <a class="panel-btn panel-btn-secondary" href="{% url 'panel:organization_list' %}">Сброс</a>
+    </form>
+    <a class="panel-btn panel-btn-primary" href="{% url 'panel:organization_add' %}">Добавить организацию</a>
+  </section>
+
+  <section class="panel-card panel-table-card">
+    <table class="panel-table">
+      <thead>
+        <tr>
+          <th>Наименовани</th>
+          <th>ИНН</th>
+          <th>Тип</th>
+          <th>Ответственное лицо</th>
+          <th>Номер дела</th>
+          <th>Статус</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for organization in organizations %}
+          <tr class="panel-table-row-link" data-href="{% url 'panel:organization_detail' organization.pk %}">
+            <td>{{ organization.name }}</td>
+            <td>{{ organization.inn }}</td>
+            <td>{{ organization.organization_type }}</td>
+            <td>{{ organization.responsible_person|default:"-" }}</td>
+            <td>{{ organization.case_number|default:"-" }}</td>
+            <td>{{ organization.status|default:"-" }}</td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="6" class="panel-empty">Организации не найдены.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  {% if is_paginated %}
+    <nav class="panel-pagination">
+      {% if page_obj.has_previous %}
+        <a class="panel-btn panel-btn-secondary" href="?q={{ search_query }}&organization_type={{ selected_organization_type }}&status={{ selected_status }}&page={{ page_obj.previous_page_number }}">Назад</a>
+      {% endif %}
+      <span class="panel-pagination-info">Страница {{ page_obj.number }} из {{ page_obj.paginator.num_pages }}</span>
+      {% if page_obj.has_next %}
+        <a class="panel-btn panel-btn-secondary" href="?q={{ search_query }}&organization_type={{ selected_organization_type }}&status={{ selected_status }}&page={{ page_obj.next_page_number }}">Вперед</a>
+      {% endif %}
+    </nav>
+  {% endif %}
+
+  <script>
+    document.querySelectorAll(".panel-table-row-link").forEach(function (row) {
+      row.addEventListener("click", function () {
+        const url = row.dataset.href;
+        if (url) {
+          window.location.href = url;
+        }
+      });
+    });
+  </script>
+{% endblock %}

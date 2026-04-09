@@ -1,0 +1,15 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: d3_0_web_dev
+    command: python manage.py runserver 0.0.0.0:8000
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.dev
+      DJANGO_DEBUG: "1"
+      PYTHONUNBUFFERED: "1"

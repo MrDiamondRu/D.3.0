@@ -1,0 +1,93 @@
+{% extends "panel/base.html" %}
+
+{% block title %}{{ organization.name }} | {{ panel_title }}{% endblock %}
+
+{% block content %}
+  <section class="panel-toolbar">
+    <div class="panel-toolbar-title">
+      <h1>{{ organization.name }}</h1>
+      <p>Карточка организации</p>
+    </div>
+    <div class="panel-toolbar-actions">
+      <a class="panel-btn panel-btn-secondary" href="{% url 'panel:organization_list' %}">К списку</a>
+      <a class="panel-btn panel-btn-primary" href="{% url 'panel:organization_edit' organization.pk %}">Редактировать</a>
+    </div>
+  </section>
+
+  <section class="panel-card panel-detail-grid">
+    <div class="panel-detail-item">
+      <span>ИНН</span>
+      <strong>{{ organization.inn }}</strong>
+    </div>
+    <div class="panel-detail-item">
+      <span>Тип организации</span>
+      <strong>{{ organization.organization_type }}</strong>
+    </div>
+    <div class="panel-detail-item">
+      <span>Статус</span>
+      <strong>{{ organization.status|default:"-" }}</strong>
+    </div>
+    <div class="panel-detail-item">
+      <span>Статус взаимодействия</span>
+      <strong>{{ organization.interaction_status|default:"-" }}</strong>
+    </div>
+    <div class="panel-detail-item">
+      <span>Номер дела</span>
+      <strong>{{ organization.case_number|default:"-" }}</strong>
+    </div>
+    <div class="panel-detail-item">
+      <span>Ответственное лицо</span>
+      <strong>{{ organization.responsible_person|default:"-" }}</strong>
+    </div>
+    <div class="panel-detail-item">
+      <span>Наличие в реестре</span>
+      <strong>{{ organization.in_registry|default:"-" }}</strong>
+    </div>
+    <div class="panel-detail-item">
+      <span>Ссылка в реестре</span>
+      {% if organization.registry_record_url %}
+        <a class="panel-link" href="{{ organization.registry_record_url }}" target="_blank" rel="noopener noreferrer">
+          {{ organization.registry_record_url }}
+        </a>
+      {% else %}
+        <strong>-</strong>
+      {% endif %}
+    </div>
+    <div class="panel-detail-item">
+      <span>Отрасль</span>
+      <strong>{{ organization.industry|default:"-" }}</strong>
+    </div>
+    <div class="panel-detail-item">
+      <span>Производитель ТС ОРМ</span>
+      <strong>{{ organization.orm_vendor|default:"-" }}</strong>
+    </div>
+    <div class="panel-detail-item">
+      <span>Владелец СОРМ</span>
+      <strong>{{ organization.sorm_owner|default:"-" }}</strong>
+    </div>
+    <div class="panel-detail-item">
+      <span>Адрес корреспонденции</span>
+      <strong>{{ organization.correspondence_address|default:"-" }}</strong>
+    </div>
+    <div class="panel-detail-item panel-detail-item-full">
+      <span>Сайты</span>
+      {% if organization.sites %}
+        <ul class="panel-sites-list">
+          {% for site in organization.sites %}
+            <li><a class="panel-link" href="{{ site }}" target="_blank" rel="noopener noreferrer">{{ site }}</a></li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <strong>-</strong>
+      {% endif %}
+    </div>
+    <div class="panel-detail-item">
+      <span>Создано</span>
+      <strong>{{ organization.created_at|date:"d.m.Y H:i" }}</strong>
+    </div>
+    <div class="panel-detail-item">
+      <span>Обновлено</span>
+      <strong>{{ organization.updated_at|date:"d.m.Y H:i" }}</strong>
+    </div>
+  </section>
+{% endblock %}

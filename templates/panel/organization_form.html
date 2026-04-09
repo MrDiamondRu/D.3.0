@@ -1,0 +1,103 @@
+{% extends "panel/base.html" %}
+
+{% block title %}{{ form_title }} | {{ panel_title }}{% endblock %}
+
+{% block content %}
+  <section class="panel-toolbar">
+    <div class="panel-toolbar-title">
+      <h1>{{ form_title }}</h1>
+      <p>Заполните основные данные организации</p>
+    </div>
+    <div class="panel-toolbar-actions">
+      {% if object %}
+        <a class="panel-btn panel-btn-secondary" href="{% url 'panel:organization_detail' object.pk %}">Отмена</a>
+      {% else %}
+        <a class="panel-btn panel-btn-secondary" href="{% url 'panel:organization_list' %}">Отмена</a>
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="panel-card">
+    {% if form.non_field_errors %}
+      <div class="panel-form-errors">
+        {% for error in form.non_field_errors %}
+          <p>{{ error }}</p>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    <form method="post" class="panel-form">
+      {% csrf_token %}
+      {% for hidden_field in form.hidden_fields %}
+        {{ hidden_field }}
+      {% endfor %}
+
+      <div class="panel-form-grid">
+        {% for field in form.visible_fields %}
+          <label class="panel-form-field{% if field.name == 'correspondence_address' or field.name == 'sites_text' %} panel-form-field-full{% endif %}">
+            <span class="panel-form-label">{{ field.label }}</span>
+            {% if field.name == 'responsible_person' or field.name == 'sorm_owner' %}
+              <div class="panel-searchable-select">
+                <input
+                  type="text"
+                  class="panel-input panel-searchable-select-input"
+                  placeholder="{% if field.name == 'responsible_person' %}Поиск пользователя...{% else %}Поиск владельца СОРМ...{% endif %}"
+                  data-select-search-target="{{ field.id_for_label }}"
+                >
+                {{ field }}
+              </div>
+            {% else %}
+              {{ field }}
+            {% endif %}
+            {% if field.help_text %}
+              <span class="panel-form-help">{{ field.help_text }}</span>
+            {% endif %}
+            {% if field.errors %}
+              <span class="panel-form-error">{{ field.errors|striptags }}</span>
+            {% endif %}
+          </label>
+        {% endfor %}
+      </div>
+
+      <div class="panel-form-actions">
+        <button class="panel-btn panel-btn-primary" type="submit">{{ submit_label }}</button>
+      </div>
+    </form>
+  </section>
+
+  <script>
+    document.querySelectorAll("[data-select-search-target]").forEach(function (searchInput) {
+      const targetId = searchInput.getAttribute("data-select-search-target");
+      const select = document.getElementById(targetId);
+      if (!select) {
+        return;
+      }
+
+      const originalOptions = Array.from(select.options).map(function (option) {
+        return { value: option.value, text: option.text, selected: option.selected };
+      });
+
+      searchInput.addEventListener("input", function () {
+        const term = searchInput.value.trim().toLowerCase();
+        const currentValue = select.value;
+        const filtered = originalOptions.filter(function (option, index) {
+          if (index === 0) {
+            return true;
+          }
+          return option.text.toLowerCase().includes(term);
+        });
+
+        select.innerHTML = "";
+        filtered.forEach(function (option) {
+          const el = document.createElement("option");
+          el.value = option.value;
+          el.textContent = option.text;
+          if (option.value === currentValue) {
+            el.selected = true;
+          }
+          select.appendChild(el);
+        });
+      });
+    });
+  </script>
+{% endblock %}

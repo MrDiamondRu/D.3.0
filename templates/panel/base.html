@@ -1,0 +1,51 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}{{ panel_title }}{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'panel/panel.css' %}">
+</head>
+<body>
+  <div class="panel-layout">
+    <header class="panel-header">
+      <div class="panel-header-title">{{ panel_title }}</div>
+      <div class="panel-user">
+        <div class="panel-user-name">
+          {% if request.user.get_full_name %}
+            {{ request.user.get_full_name }}
+          {% else %}
+            {{ request.user.username }}
+          {% endif %}
+        </div>
+        <div class="panel-user-meta">{{ request.user.username }}</div>
+      </div>
+    </header>
+
+    <div class="panel-body">
+      <aside class="panel-sidebar">
+        <nav class="panel-nav">
+          {% for item in panel_menu %}
+            <a href="{{ item.url }}" class="panel-nav-item{% if item.is_active %} panel-nav-item-active{% endif %}">
+              {{ item.name }}
+            </a>
+          {% endfor %}
+        </nav>
+      </aside>
+
+      <main class="panel-main">
+        {% if messages %}
+          <div class="panel-messages">
+            {% for message in messages %}
+              <div class="panel-message panel-message-{{ message.tags|default:'info' }}">{{ message }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+
+        {% block content %}{% endblock %}
+      </main>
+    </div>
+  </div>
+</body>
+</html>
