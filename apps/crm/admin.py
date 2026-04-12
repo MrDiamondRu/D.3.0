@@ -1,5 +1,7 @@
 from django.contrib import admin
 
+from apps.crm.favicon_fetch import maybe_assign_favicon_from_sites
+
 from .models import (
     Comment,
     Contact,
@@ -85,6 +87,10 @@ class OrganizationAdmin(admin.ModelAdmin):
     @admin.display(description="Статусы")
     def statuses_display(self, obj):
         return ", ".join(obj.statuses.values_list("name", flat=True)) or "-"
+
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        maybe_assign_favicon_from_sites(obj)
 
 
 @admin.register(Contact)

@@ -1,6 +1,7 @@
 from django import forms
 from django.contrib.auth import get_user_model
 
+from apps.crm.favicon_fetch import maybe_assign_favicon_from_sites
 from apps.crm.models import Organization, OrganizationStatus
 
 
@@ -105,4 +106,5 @@ class OrganizationForm(forms.ModelForm):
         if commit:
             instance.save()
             self.save_m2m()
+            maybe_assign_favicon_from_sites(instance)
         return instance
