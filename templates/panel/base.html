@@ -5,12 +5,16 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}{{ panel_title }}{% endblock %}</title>
+  <link rel="icon" href="{% static 'free-icon-hierarchy-structure-9285455.ico' %}" type="image/x-icon">
   <link rel="stylesheet" href="{% static 'panel/panel.css' %}">
 </head>
 <body>
   <div class="panel-layout">
     <header class="panel-header">
-      <div class="panel-header-title">{{ panel_title }}</div>
+      <div class="panel-header-left">
+        <button type="button" class="panel-sidebar-mobile-toggle" id="panel-sidebar-mobile-toggle" aria-controls="panel-sidebar" aria-expanded="false" aria-label="Открыть меню"></button>
+        <div class="panel-header-title">{{ panel_title }}</div>
+      </div>
       <div class="panel-user-wrap">
         <div class="panel-user">
           <div class="panel-user-name">
@@ -29,18 +33,33 @@
       </div>
     </header>
 
-    <div class="panel-body">
-      <aside class="panel-sidebar">
+    <div class="panel-body" id="panel-body">
+      <div class="panel-sidebar-backdrop" id="panel-sidebar-backdrop" hidden></div>
+      <aside class="panel-sidebar" id="panel-sidebar">
+        <div class="panel-sidebar-toolbar">
+          <button type="button" class="panel-sidebar-collapse-toggle" id="panel-sidebar-collapse-toggle" aria-pressed="false" aria-label="Свернуть меню" title="Свернуть меню"></button>
+        </div>
         <nav class="panel-nav">
           {% for item in panel_menu %}
-            <a href="{{ item.url }}" class="panel-nav-item{% if item.is_active %} panel-nav-item-active{% endif %}">
-              {{ item.name }}
-            </a>
+            {% if item.children %}
+              <details class="panel-nav-group">
+                <summary class="panel-nav-group-summary{% if item.is_active %} panel-nav-group-summary-active{% endif %}">{{ item.name }}</summary>
+                <div class="panel-nav-group-items">
+                  {% for child in item.children %}
+                    <a href="{{ child.url }}" class="panel-nav-item panel-nav-subitem{% if child.is_active %} panel-nav-item-active{% endif %}">{{ child.name }}</a>
+                  {% endfor %}
+                </div>
+              </details>
+            {% else %}
+              <a href="{{ item.url }}" class="panel-nav-item{% if item.is_active %} panel-nav-item-active{% endif %}">
+                {{ item.name }}
+              </a>
+            {% endif %}
           {% endfor %}
         </nav>
       </aside>
 
-      <main class="panel-main">
+      <main class="panel-main" id="panel-main">
         {% if messages %}
           <div class="panel-messages">
             {% for message in messages %}
@@ -53,5 +72,80 @@
       </main>
     </div>
   </div>
+  <script>
+    (function () {
+      var body = document.getElementById("panel-body");
+      var sidebar = document.getElementById("panel-sidebar");
+      var backdrop = document.getElementById("panel-sidebar-backdrop");
+      var mobileBtn = document.getElementById("panel-sidebar-mobile-toggle");
+      var collapseBtn = document.getElementById("panel-sidebar-collapse-toggle");
+      var mqMobile = window.matchMedia("(max-width: 960px)");
+      var storageKey = "panelSidebarCollapsed";
+
+      function isMobile() {
+        return mqMobile.matches;
+      }
+
+      function setMobileOpen(open) {
+        body.classList.toggle("panel-sidebar-mobile-open", open);
+        if (mobileBtn) mobileBtn.setAttribute("aria-expanded", open ? "true" : "false");
+        if (backdrop) backdrop.hidden = !open;
+      }
+
+      function applyDesktopCollapsed(collapsed) {
+        body.classList.toggle("panel-sidebar-desktop-collapsed", collapsed);
+        if (collapseBtn) {
+          collapseBtn.setAttribute("aria-pressed", collapsed ? "true" : "false");
+          collapseBtn.setAttribute("aria-label", collapsed ? "Развернуть меню" : "Свернуть меню");
+          collapseBtn.setAttribute("title", collapsed ? "Развернуть меню" : "Свернуть меню");
+        }
+      }
+
+      function syncLayout() {
+        if (isMobile()) {
+          body.classList.remove("panel-sidebar-desktop-collapsed");
+          setMobileOpen(false);
+        } else {
+          setMobileOpen(false);
+          try {
+            applyDesktopCollapsed(localStorage.getItem(storageKey) === "1");
+          } catch (e) {
+            applyDesktopCollapsed(false);
+          }
+        }
+      }
+
+      if (mobileBtn) {
+        mobileBtn.addEventListener("click", function () {
+          if (!isMobile()) return;
+          setMobileOpen(!body.classList.contains("panel-sidebar-mobile-open"));
+        });
+      }
+      if (backdrop) {
+        backdrop.addEventListener("click", function () {
+          setMobileOpen(false);
+        });
+      }
+      function toggleDesktopCollapsed() {
+        if (isMobile()) return;
+        var next = !body.classList.contains("panel-sidebar-desktop-collapsed");
+        applyDesktopCollapsed(next);
+        try {
+          localStorage.setItem(storageKey, next ? "1" : "0");
+        } catch (e) {}
+      }
+      if (collapseBtn) {
+        collapseBtn.addEventListener("click", toggleDesktopCollapsed);
+      }
+      document.querySelectorAll(".panel-nav-group .panel-nav-subitem").forEach(function (link) {
+        link.addEventListener("click", function () {
+          var details = link.closest("details.panel-nav-group");
+          if (details) details.removeAttribute("open");
+        });
+      });
+      mqMobile.addEventListener("change", syncLayout);
+      syncLayout();
+    })();
+  </script>
 </body>
 </html>

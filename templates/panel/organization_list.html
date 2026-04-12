@@ -5,6 +5,9 @@
 {% block content %}
   <section class="panel-toolbar">
     <form method="get" class="panel-filters">
+      {% if selected_mine %}
+        <input type="hidden" name="mine" value="1">
+      {% endif %}
       <input
         type="text"
         name="q"
@@ -83,11 +86,11 @@
   {% if is_paginated %}
     <nav class="panel-pagination">
       {% if page_obj.has_previous %}
-        <a class="panel-btn panel-btn-secondary" href="?q={{ search_query }}&organization_type={{ selected_organization_type }}&status={{ selected_status }}&page={{ page_obj.previous_page_number }}">Назад</a>
+        <a class="panel-btn panel-btn-secondary" href="?q={{ search_query|urlencode }}&organization_type={{ selected_organization_type }}&status={{ selected_status }}{% if selected_mine %}&mine=1{% endif %}&page={{ page_obj.previous_page_number }}">Назад</a>
       {% endif %}
       <span class="panel-pagination-info">Страница {{ page_obj.number }} из {{ page_obj.paginator.num_pages }}</span>
       {% if page_obj.has_next %}
-        <a class="panel-btn panel-btn-secondary" href="?q={{ search_query }}&organization_type={{ selected_organization_type }}&status={{ selected_status }}&page={{ page_obj.next_page_number }}">Вперед</a>
+        <a class="panel-btn panel-btn-secondary" href="?q={{ search_query|urlencode }}&organization_type={{ selected_organization_type }}&status={{ selected_status }}{% if selected_mine %}&mine=1{% endif %}&page={{ page_obj.next_page_number }}">Вперед</a>
       {% endif %}
     </nav>
   {% endif %}

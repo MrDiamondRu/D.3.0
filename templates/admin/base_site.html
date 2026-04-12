@@ -1,0 +1,19 @@
+{% extends "admin/base.html" %}
+{% load i18n %}
+{% load static %}
+
+{% block extrahead %}
+  {{ block.super }}
+  <link rel="icon" href="{% static 'free-icon-hierarchy-structure-9285455.ico' %}" type="image/x-icon">
+{% endblock %}
+
+{% block title %}{% if subtitle %}{{ subtitle }} | {% endif %}{{ title }} | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block branding %}
+ {{ site_header|default:_('Django administration') }}
+{% if user.is_anonymous %}
+ {% include "admin/color_theme_toggle.html" %}
+{% endif %}
+{% endblock %}
+
+{% block nav-global %}{% endblock %}

@@ -9,12 +9,51 @@ from apps.crm.forms import OrganizationForm
 from apps.crm.models import Organization, OrganizationStatus, OrganizationType
 
 
+def _is_truthy_mine(value) -> bool:
+    if value is None:
+        return False
+    return str(value).strip().lower() in ("1", "true", "yes", "on")
+
+
 class PanelMenuMixin:
     panel_title = "D.3.0"
 
     def get_panel_menu(self):
-        current_path = self.request.path
+        request = self.request
+        current_path = request.path
         organizations_url = reverse("panel:organization_list")
+        org_list_path = organizations_url.rstrip("/")
+        is_org_list = request.path.rstrip("/") == org_list_path
+        is_org_section = current_path.rstrip("/").startswith(org_list_path)
+        mine_param = request.GET.get("mine", "")
+        org_type_param = request.GET.get("organization_type", "").strip()
+
+        org_children = []
+        # Все
+        all_active = (is_org_list and not _is_truthy_mine(mine_param) and not org_type_param) or (
+            is_org_section and not is_org_list
+        )
+        org_children.append({"name": "Все", "url": organizations_url, "is_active": all_active})
+        # По типу организации
+        for org_type in OrganizationType.objects.filter(is_active=True).order_by("name"):
+            type_url = f"{organizations_url}?organization_type={org_type.pk}"
+            org_children.append(
+                {
+                    "name": org_type.name,
+                    "url": type_url,
+                    "is_active": is_org_list and org_type_param == str(org_type.pk) and not _is_truthy_mine(mine_param),
+                }
+            )
+        # Мои дела
+        mine_url = f"{organizations_url}?mine=1"
+        org_children.append(
+            {
+                "name": "Мои дела",
+                "url": mine_url,
+                "is_active": is_org_list and _is_truthy_mine(mine_param),
+            }
+        )
+
         implementation_url = reverse("panel:implementation")
         calendar_url = reverse("panel:calendar")
         statistics_url = reverse("panel:statistics")
@@ -22,11 +61,13 @@ class PanelMenuMixin:
         mailings_url = reverse("panel:mailings")
         documents_url = reverse("panel:documents")
         admin_url = reverse("admin:index")
+        org_group_active = is_org_section or any(c["is_active"] for c in org_children)
         return [
             {
                 "name": "Организации",
                 "url": organizations_url,
-                "is_active": current_path.startswith(organizations_url),
+                "is_active": org_group_active,
+                "children": org_children,
             },
             {"name": "Внедрение", "url": implementation_url, "is_active": current_path.startswith(implementation_url)},
             {"name": "Календарь", "url": calendar_url, "is_active": current_path.startswith(calendar_url)},
@@ -103,6 +144,8 @@ class OrganizationListView(PanelAuthMixin, PanelMenuMixin, ListView):
             qs = qs.filter(organization_type_id=organization_type_id)
         if status_id:
             qs = qs.filter(statuses__id=status_id)
+        if _is_truthy_mine(self.request.GET.get("mine", "")):
+            qs = qs.filter(responsible_person_id=self.request.user.pk)
         return qs.distinct()
 
     def get_context_data(self, **kwargs):
@@ -110,6 +153,7 @@ class OrganizationListView(PanelAuthMixin, PanelMenuMixin, ListView):
         context["search_query"] = self.request.GET.get("q", "").strip()
         context["selected_organization_type"] = self.request.GET.get("organization_type", "").strip()
         context["selected_status"] = self.request.GET.get("status", "").strip()
+        context["selected_mine"] = _is_truthy_mine(self.request.GET.get("mine", ""))
         context["organization_types"] = OrganizationType.objects.filter(is_active=True).order_by("name")
         context["organization_statuses"] = OrganizationStatus.objects.filter(is_active=True).order_by("name")
         return context
