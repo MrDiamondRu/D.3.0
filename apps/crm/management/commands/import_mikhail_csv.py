@@ -90,12 +90,16 @@ class Command(BaseCommand):
                     "sites": self._parse_sites((row.get("Сайт") or "").strip()),
                     "organization_type": self._get_ref(OrganizationType, row.get("Тип") or "") or OrganizationType.objects.get_or_create(name="Не указан")[0],
                     "interaction_status": self._get_ref(InteractionStatus, row.get("Статус взаимодействия") or ""),
-                    "status": self._get_ref(OrganizationStatus, row.get("Статус") or ""),
                     "industry": self._get_ref(Industry, row.get("Отрасль") or ""),
                     "orm_vendor": self._get_ref(OrmVendor, row.get("Производитель ТС ОРМ") or ""),
                 }
+                organization_status = self._get_ref(OrganizationStatus, row.get("Статус") or "")
 
                 obj, was_created = Organization.objects.update_or_create(inn=inn, name=name, defaults=defaults)
+                if organization_status:
+                    obj.statuses.set([organization_status])
+                else:
+                    obj.statuses.clear()
                 created += int(was_created)
                 updated += int(not was_created)
                 sorm_owner_links.append((obj.pk, (row.get("Владелец СОРМ") or "").strip()))

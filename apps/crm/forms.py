@@ -1,14 +1,14 @@
 from django import forms
 from django.contrib.auth import get_user_model
 
-from apps.crm.models import Organization
+from apps.crm.models import Organization, OrganizationStatus
 
 
 class OrganizationForm(forms.ModelForm):
-    responsible_person = forms.ChoiceField(
+    responsible_person = forms.ModelChoiceField(
         label="Ответственное лицо",
         required=False,
-        choices=[],
+        queryset=get_user_model().objects.none(),
         widget=forms.Select(
             attrs={
                 "class": "panel-input panel-select",
@@ -16,6 +16,11 @@ class OrganizationForm(forms.ModelForm):
                 "data-search-placeholder": "Поиск пользователя...",
             }
         ),
+    )
+    statuses = forms.ModelMultipleChoiceField(
+        label="Статусы организации",
+        required=False,
+        queryset=OrganizationStatus.objects.none(),
     )
     sites_text = forms.CharField(
         label="Сайты",
@@ -33,10 +38,11 @@ class OrganizationForm(forms.ModelForm):
     class Meta:
         model = Organization
         fields = [
+            "icon",
             "name",
             "inn",
             "organization_type",
-            "status",
+            "statuses",
             "interaction_status",
             "case_number",
             "responsible_person",
@@ -49,10 +55,10 @@ class OrganizationForm(forms.ModelForm):
             "sorm_owner",
         ]
         widgets = {
+            "icon": forms.ClearableFileInput(attrs={"class": "panel-file-input"}),
             "name": forms.TextInput(attrs={"class": "panel-input"}),
             "inn": forms.TextInput(attrs={"class": "panel-input", "maxlength": 12}),
             "organization_type": forms.Select(attrs={"class": "panel-input"}),
-            "status": forms.Select(attrs={"class": "panel-input"}),
             "interaction_status": forms.Select(attrs={"class": "panel-input"}),
             "case_number": forms.TextInput(attrs={"class": "panel-input"}),
             "in_registry": forms.TextInput(attrs={"class": "panel-input"}),
@@ -73,12 +79,9 @@ class OrganizationForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         user_model = get_user_model()
         users = user_model.objects.all().order_by("first_name", "last_name", "username")
-        user_choices = [("", "---------")]
-        for user in users:
-            full_name = user.get_full_name().strip()
-            label = f"{full_name} ({user.username})" if full_name else user.username
-            user_choices.append((user.username, label))
-        self.fields["responsible_person"].choices = user_choices
+        self.fields["responsible_person"].queryset = users
+        self.fields["responsible_person"].label_from_instance = self._user_label
+        self.fields["statuses"].queryset = OrganizationStatus.objects.filter(is_active=True).order_by("name")
 
         self.fields["sorm_owner"].queryset = Organization.objects.order_by("name")
         if self.instance and self.instance.pk:
@@ -90,6 +93,11 @@ class OrganizationForm(forms.ModelForm):
     def clean_sites_text(self):
         value = self.cleaned_data.get("sites_text", "")
         return [line.strip() for line in value.splitlines() if line.strip()]
+
+    @staticmethod
+    def _user_label(user):
+        full_name = user.get_full_name().strip()
+        return f"{full_name} ({user.username})" if full_name else user.username
 
     def save(self, commit=True):
         instance = super().save(commit=False)

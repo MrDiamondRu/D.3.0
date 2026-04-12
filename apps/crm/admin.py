@@ -62,17 +62,16 @@ class OrganizationAdmin(admin.ModelAdmin):
         "name",
         "inn",
         "organization_type",
-        "status",
+        "statuses_display",
         "interaction_status",
         "responsible_person",
         "updated_at",
     )
-    list_filter = ("organization_type", "status", "interaction_status", "industry", "responsible_person")
+    list_filter = ("organization_type", "statuses", "interaction_status", "industry", "responsible_person")
     search_fields = ("name", "inn", "case_number", "responsible_person__username", "responsible_person__first_name", "responsible_person__last_name")
     readonly_fields = ("created_at", "updated_at")
     autocomplete_fields = (
         "organization_type",
-        "status",
         "interaction_status",
         "industry",
         "orm_vendor",
@@ -80,7 +79,12 @@ class OrganizationAdmin(admin.ModelAdmin):
         "created_by",
         "updated_by",
     )
+    filter_horizontal = ("statuses",)
     inlines = (ContactInline, InteractionObjectInline, EventInline, DocumentInline, CommentInline, PsiInline)
+
+    @admin.display(description="Статусы")
+    def statuses_display(self, obj):
+        return ", ".join(obj.statuses.values_list("name", flat=True)) or "-"
 
 
 @admin.register(Contact)

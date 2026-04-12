@@ -43,6 +43,8 @@ class NamedReference(models.Model):
 
 
 class OrganizationType(NamedReference):
+    icon = models.ImageField(upload_to="organization_types/icons/", null=True, blank=True, verbose_name="Иконка")
+
     class Meta(NamedReference.Meta):
         verbose_name = "Тип организации"
         verbose_name_plural = "Типы организаций"
@@ -103,6 +105,7 @@ class OrmVendor(NamedReference):
 
 
 class Organization(TimeAuditModel):
+    icon = models.ImageField(upload_to="organizations/icons/", null=True, blank=True, verbose_name="Иконка")
     name = models.CharField(max_length=500, verbose_name="Наименование организации")
     inn = models.CharField(
         max_length=12,
@@ -116,13 +119,11 @@ class Organization(TimeAuditModel):
         related_name="organizations",
         verbose_name="Тип организации",
     )
-    status = models.ForeignKey(
+    statuses = models.ManyToManyField(
         OrganizationStatus,
-        on_delete=models.PROTECT,
-        related_name="organizations",
-        null=True,
+        related_name="organizations_by_statuses",
         blank=True,
-        verbose_name="Статус",
+        verbose_name="Статусы",
     )
     interaction_status = models.ForeignKey(
         InteractionStatus,
