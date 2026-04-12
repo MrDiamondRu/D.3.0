@@ -9,7 +9,7 @@ MANAGE := python manage.py
 
 .DEFAULT_GOAL := help
 
-.PHONY: help start start-dev stop stop-dev refresh logs logs-dev shell migrate makemigrations createsuperuser seed import-csv prod-up start-prod
+.PHONY: help start start-dev stop stop-dev refresh refresh-nocache build-nocache logs logs-dev shell migrate makemigrations createsuperuser seed import-csv prod-up start-prod
 
 # Colors for help menu
 CYAN := \033[0;36m
@@ -31,6 +31,8 @@ help:
 	@echo "  $(GREEN)make stop$(NC)             Остановить dev-окружение"
 	@echo "  $(GREEN)make stop-dev$(NC)         $(GRAY)(алиас для stop)$(NC)"
 	@echo "  $(GREEN)make refresh$(NC)          Полный перезапуск dev + migrate"
+	@echo "  $(GREEN)make refresh-nocache$(NC)  Как refresh, образ dev без кэша Docker"
+	@echo "  $(GREEN)make build-nocache$(NC)    Только docker build --no-cache (dev)"
 	@echo "▸ Логи и shell"
 	@echo "  $(GREEN)make logs$(NC)             Логи сервиса web (follow)"
 	@echo "  $(GREEN)make logs-dev$(NC)         $(GRAY)(алиас для logs)$(NC)"
@@ -80,6 +82,18 @@ refresh:
 	$(DC_DEV) exec -T web $(MANAGE) migrate
 	@echo "============================================================"
 	@echo "  Refresh completed (dev restarted, migrations applied)"
+	@echo "============================================================"
+
+build-nocache:
+	$(DC_DEV) build --no-cache
+
+refresh-nocache:
+	$(DC_DEV) down
+	$(DC_DEV) build --no-cache
+	$(DC_DEV) up -d
+	$(DC_DEV) exec -T web $(MANAGE) migrate
+	@echo "============================================================"
+	@echo "  Refresh completed (no-cache rebuild, migrations applied)"
 	@echo "============================================================"
 
 logs: logs-dev
