@@ -11,15 +11,21 @@
   <div class="panel-layout">
     <header class="panel-header">
       <div class="panel-header-title">{{ panel_title }}</div>
-      <div class="panel-user">
-        <div class="panel-user-name">
-          {% if request.user.get_full_name %}
-            {{ request.user.get_full_name }}
-          {% else %}
-            {{ request.user.username }}
-          {% endif %}
+      <div class="panel-user-wrap">
+        <div class="panel-user">
+          <div class="panel-user-name">
+            {% if request.user.get_full_name %}
+              {{ request.user.get_full_name }}
+            {% else %}
+              {{ request.user.username }}
+            {% endif %}
+          </div>
+          <div class="panel-user-meta">{{ request.user.username }}</div>
         </div>
-        <div class="panel-user-meta">{{ request.user.username }}</div>
+        <form method="post" action="{% url 'panel:logout' %}">
+          {% csrf_token %}
+          <button type="submit" class="panel-btn panel-btn-secondary">Выйти</button>
+        </form>
       </div>
     </header>
 

@@ -34,35 +34,50 @@
     <a class="panel-btn panel-btn-primary" href="{% url 'panel:organization_add' %}">Добавить организацию</a>
   </section>
 
-  <section class="panel-card panel-table-card">
-    <table class="panel-table">
-      <thead>
-        <tr>
-          <th>Наименовани</th>
-          <th>ИНН</th>
-          <th>Тип</th>
-          <th>Ответственное лицо</th>
-          <th>Номер дела</th>
-          <th>Статус</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for organization in organizations %}
-          <tr class="panel-table-row-link" data-href="{% url 'panel:organization_detail' organization.pk %}">
-            <td>{{ organization.name }}</td>
-            <td>{{ organization.inn }}</td>
-            <td>{{ organization.organization_type }}</td>
-            <td>{{ organization.responsible_person|default:"-" }}</td>
-            <td>{{ organization.case_number|default:"-" }}</td>
-            <td>{{ organization.status|default:"-" }}</td>
-          </tr>
-        {% empty %}
-          <tr>
-            <td colspan="6" class="panel-empty">Организации не найдены.</td>
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+  <section class="panel-card">
+    <div class="panel-organization-cards">
+      {% for organization in organizations %}
+        <article class="panel-organization-card" data-href="{% url 'panel:organization_detail' organization.pk %}">
+          <div class="panel-organization-main">
+            <div class="panel-organization-icon-wrap">
+              {% if organization.icon %}
+                <img src="{{ organization.icon.url }}" alt="{{ organization.name }}" class="panel-organization-icon">
+              {% elif organization.organization_type.icon %}
+                <img src="{{ organization.organization_type.icon.url }}" alt="{{ organization.organization_type }}" class="panel-organization-icon">
+              {% else %}
+                <div class="panel-organization-icon panel-organization-icon-placeholder">
+                  {{ organization.name|first|upper }}
+                </div>
+              {% endif %}
+            </div>
+            <div class="panel-organization-title-block">
+              <h3 class="panel-organization-title">{{ organization.name }}</h3>
+              <p class="panel-organization-type">{{ organization.organization_type }}</p>
+            </div>
+          </div>
+
+          <div class="panel-organization-meta">
+            <div><span>ИНН:</span> {{ organization.inn }}</div>
+            <div><span>Ответственный:</span> {{ organization.responsible_person|default:"-" }}</div>
+            <div><span>Номер дела:</span> {{ organization.case_number|default:"-" }}</div>
+          </div>
+
+          <div class="panel-organization-status">
+            {% with organization.statuses.all as statuses %}
+              {% if statuses %}
+                <div class="panel-status-tags">
+                  {% for status in statuses %}
+                    <span class="panel-status-tag">{{ status.name }}</span>
+                  {% endfor %}
+                </div>
+              {% endif %}
+            {% endwith %}
+          </div>
+        </article>
+      {% empty %}
+        <div class="panel-empty">Организации не найдены.</div>
+      {% endfor %}
+    </div>
   </section>
 
   {% if is_paginated %}
@@ -78,9 +93,9 @@
   {% endif %}
 
   <script>
-    document.querySelectorAll(".panel-table-row-link").forEach(function (row) {
-      row.addEventListener("click", function () {
-        const url = row.dataset.href;
+    document.querySelectorAll(".panel-organization-card").forEach(function (card) {
+      card.addEventListener("click", function () {
+        const url = card.dataset.href;
         if (url) {
           window.location.href = url;
         }

@@ -24,8 +24,18 @@
       <strong>{{ organization.organization_type }}</strong>
     </div>
     <div class="panel-detail-item">
-      <span>Статус</span>
-      <strong>{{ organization.status|default:"-" }}</strong>
+      <span>Статусы</span>
+      {% with organization.statuses.all as statuses %}
+        {% if statuses %}
+          <div class="panel-status-tags">
+            {% for status in statuses %}
+              <span class="panel-status-tag">{{ status.name }}</span>
+            {% endfor %}
+          </div>
+        {% else %}
+          <strong>-</strong>
+        {% endif %}
+      {% endwith %}
     </div>
     <div class="panel-detail-item">
       <span>Статус взаимодействия</span>

@@ -1,0 +1,63 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Вход — {{ panel_title|default:"D.3.0" }}</title>
+  <link rel="stylesheet" href="{% static 'panel/panel.css' %}">
+</head>
+<body class="panel-auth-page">
+  <div class="panel-auth-card">
+    <div class="panel-auth-header">
+      <div class="panel-auth-logo">D.3.0</div>
+      <h1>Вход в панель</h1>
+      <p>Введите данные учетной записи</p>
+    </div>
+
+    <form method="post" class="panel-auth-form">
+      {% csrf_token %}
+      {% if form.non_field_errors %}
+        <div class="panel-form-errors">
+          {% for error in form.non_field_errors %}
+            <p>{{ error }}</p>
+          {% endfor %}
+        </div>
+      {% endif %}
+
+      <label class="panel-form-field">
+        <span class="panel-form-label">Имя пользователя</span>
+        <input
+          type="text"
+          name="username"
+          autofocus
+          autocapitalize="none"
+          autocomplete="username"
+          maxlength="150"
+          required
+          class="panel-input"
+          value="{{ form.username.value|default:'' }}"
+          placeholder="username"
+        >
+      </label>
+
+      <label class="panel-form-field">
+        <span class="panel-form-label">Пароль</span>
+        <input
+          type="password"
+          name="password"
+          autocomplete="current-password"
+          required
+          class="panel-input"
+          placeholder="password"
+        >
+      </label>
+
+      {% if next %}
+        <input type="hidden" name="next" value="{{ next }}">
+      {% endif %}
+      <button type="submit" class="panel-btn panel-btn-primary panel-auth-submit">Войти</button>
+    </form>
+  </div>
+</body>
+</html>

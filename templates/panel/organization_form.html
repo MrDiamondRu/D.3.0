@@ -26,7 +26,7 @@
       </div>
     {% endif %}
 
-    <form method="post" class="panel-form">
+    <form method="post" enctype="multipart/form-data" class="panel-form">
       {% csrf_token %}
       {% for hidden_field in form.hidden_fields %}
         {{ hidden_field }}
@@ -45,6 +45,39 @@
                   data-select-search-target="{{ field.id_for_label }}"
                 >
                 {{ field }}
+              </div>
+            {% elif field.name == 'statuses' %}
+              <div class="panel-status-ms" data-panel-status-ms>
+                <button
+                  type="button"
+                  class="panel-input panel-status-ms-trigger"
+                  id="{{ field.auto_id }}_trigger"
+                  aria-haspopup="listbox"
+                  aria-expanded="false"
+                >
+                  <span class="panel-status-ms-summary" data-status-ms-summary data-placeholder="Выберите статусы…"></span>
+                  <span class="panel-status-ms-chevron" aria-hidden="true">▾</span>
+                </button>
+                <div
+                  class="panel-status-ms-dropdown"
+                  id="{{ field.auto_id }}_dropdown"
+                  role="listbox"
+                  aria-labelledby="{{ field.auto_id }}_trigger"
+                  hidden
+                >
+                  {% for st in field.field.queryset %}
+                    <label class="panel-status-ms-option">
+                      <input
+                        type="checkbox"
+                        name="statuses"
+                        value="{{ st.pk }}"
+                        id="id_statuses_{{ st.pk }}"
+                        {% if field.value and st.pk in field.value %}checked{% endif %}
+                      >
+                      <span>{{ st.name }}</span>
+                    </label>
+                  {% endfor %}
+                </div>
               </div>
             {% else %}
               {{ field }}
@@ -97,6 +130,59 @@
           }
           select.appendChild(el);
         });
+      });
+    });
+
+    document.querySelectorAll("[data-panel-status-ms]").forEach(function (root) {
+      const trigger = root.querySelector(".panel-status-ms-trigger");
+      const dropdown = root.querySelector(".panel-status-ms-dropdown");
+      const summary = root.querySelector("[data-status-ms-summary]");
+      const checkboxes = root.querySelectorAll('input[type="checkbox"][name="statuses"]');
+      if (!trigger || !dropdown || !summary) {
+        return;
+      }
+      const placeholder = summary.dataset.placeholder || "—";
+
+      function updateSummary() {
+        const names = [];
+        checkboxes.forEach(function (cb) {
+          if (cb.checked) {
+            const label = cb.closest("label");
+            const text = label ? label.querySelector("span") : null;
+            if (text) {
+              names.push(text.textContent.trim());
+            }
+          }
+        });
+        summary.textContent = names.length ? names.join(", ") : placeholder;
+      }
+
+      function setOpen(open) {
+        trigger.setAttribute("aria-expanded", open ? "true" : "false");
+        dropdown.hidden = !open;
+      }
+
+      updateSummary();
+      checkboxes.forEach(function (cb) {
+        cb.addEventListener("change", updateSummary);
+      });
+
+      trigger.addEventListener("click", function (e) {
+        e.preventDefault();
+        const open = trigger.getAttribute("aria-expanded") === "true";
+        setOpen(!open);
+      });
+
+      document.addEventListener("click", function (e) {
+        if (!root.contains(e.target)) {
+          setOpen(false);
+        }
+      });
+
+      document.addEventListener("keydown", function (e) {
+        if (e.key === "Escape" && !dropdown.hidden) {
+          setOpen(false);
+        }
       });
     });
   </script>

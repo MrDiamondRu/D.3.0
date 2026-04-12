@@ -1,0 +1,25 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Загрузка — D.3.0</title>
+  <link rel="stylesheet" href="{% static 'panel/panel.css' %}">
+</head>
+<body class="panel-loading-page">
+  <div class="panel-loader">
+    <div class="panel-loader-logo">D.3.0</div>
+    <div class="panel-loader-track">
+      <div class="panel-loader-bar"></div>
+    </div>
+    <p class="panel-loader-text">Загрузка панели...</p>
+  </div>
+
+  <script>
+    window.setTimeout(function () {
+      window.location.replace("{% url 'panel:organization_list' %}");
+    }, 900);
+  </script>
+</body>
+</html>
