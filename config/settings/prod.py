@@ -3,6 +3,8 @@ from .base import *  # noqa: F401,F403
 
 DEBUG = False
 ALLOWED_HOSTS = [x.strip() for x in ENV.get("DJANGO_ALLOWED_HOSTS", "").split(",") if x.strip()]
+if "10.10.10.135" not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append("10.10.10.135")
 
 DATABASES = {
     "default": {
