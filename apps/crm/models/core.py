@@ -1,6 +1,9 @@
 from django.conf import settings
+from django.contrib.contenttypes.fields import GenericForeignKey
+from django.contrib.contenttypes.models import ContentType
 from django.core.validators import MinLengthValidator, URLValidator
 from django.db import models
+from django.utils import timezone
 
 from apps.crm.validators import validate_phone_11_digits, validate_url_list
 
@@ -68,10 +71,12 @@ class InteractionObjectType(NamedReference):
         verbose_name_plural = "Типы объектов взаимодействия"
 
 
-class PsiStatus(NamedReference):
-    class Meta(NamedReference.Meta):
-        verbose_name = "Статус ПСИ"
-        verbose_name_plural = "Статусы ПСИ"
+class PsiWorkflowStatus(models.TextChoices):
+    ASSIGNED = "assigned", "Назначены"
+    IN_PROGRESS = "in_progress", "В работе"
+    FAILED = "failed", "Провалены"
+    OVERDUE = "overdue", "Просрочены"
+    SUCCESSFUL = "successful", "Успешны"
 
 
 class EventType(NamedReference):
@@ -228,11 +233,19 @@ class Contact(TimeAuditModel):
         on_delete=models.CASCADE,
         related_name="contacts",
         verbose_name="Организация",
+        null=True,
+        blank=True,
+    )
+    telecom_operator = models.ForeignKey(
+        "TelecomOperator",
+        on_delete=models.CASCADE,
+        related_name="operator_contacts",
+        verbose_name="Оператор связи",
+        null=True,
+        blank=True,
     )
     position = models.CharField(max_length=255, blank=True, verbose_name="Должность")
-    last_name = models.CharField(max_length=120, blank=True, verbose_name="Фамилия")
     first_name = models.CharField(max_length=120, blank=True, verbose_name="Имя")
-    middle_name = models.CharField(max_length=120, blank=True, verbose_name="Отчество")
     phone = models.CharField(
         max_length=11,
         blank=True,
@@ -245,11 +258,22 @@ class Contact(TimeAuditModel):
     class Meta:
         verbose_name = "Контакт"
         verbose_name_plural = "Контакты"
-        indexes = [models.Index(fields=["organization", "last_name"])]
+        indexes = [
+            models.Index(fields=["organization", "first_name"]),
+            models.Index(fields=["telecom_operator", "first_name"]),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(organization__isnull=False, telecom_operator__isnull=True)
+                    | models.Q(organization__isnull=True, telecom_operator__isnull=False)
+                ),
+                name="contact_org_xor_operator",
+            ),
+        ]
 
     def __str__(self) -> str:
-        fio = " ".join(x for x in [self.last_name, self.first_name, self.middle_name] if x)
-        return fio or f"Контакт #{self.pk}"
+        return self.first_name or f"Контакт #{self.pk}"
 
 
 class Psi(TimeAuditModel):
@@ -258,6 +282,16 @@ class Psi(TimeAuditModel):
         on_delete=models.CASCADE,
         related_name="psis",
         verbose_name="Организация",
+        null=True,
+        blank=True,
+    )
+    license_order = models.ForeignKey(
+        "LicenseOrder",
+        on_delete=models.CASCADE,
+        related_name="psis",
+        verbose_name="Приказ лицензии",
+        null=True,
+        blank=True,
     )
     assigned_date = models.DateField(null=True, blank=True, verbose_name="Дата назначения")
     responsible = models.ForeignKey(
@@ -268,13 +302,12 @@ class Psi(TimeAuditModel):
     )
     start_date = models.DateField(null=True, blank=True, verbose_name="Дата начала")
     end_date = models.DateField(null=True, blank=True, verbose_name="Дата завершения")
-    status = models.ForeignKey(
-        PsiStatus,
-        on_delete=models.PROTECT,
-        related_name="psis",
+    status = models.CharField(
+        max_length=24,
+        choices=PsiWorkflowStatus.choices,
+        default=PsiWorkflowStatus.ASSIGNED,
         verbose_name="Статус",
     )
-    protocol_html_url = models.URLField(blank=True, verbose_name="Ссылка на протокол")
     comment = models.TextField(blank=True, verbose_name="Комментарий")
 
     class Meta:
@@ -286,11 +319,32 @@ class Psi(TimeAuditModel):
                 | models.Q(start_date__isnull=True)
                 | models.Q(end_date__gte=models.F("start_date")),
                 name="psi_dates_valid",
-            )
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(organization__isnull=False, license_order__isnull=True)
+                    | models.Q(organization__isnull=True, license_order__isnull=False)
+                ),
+                name="psi_single_scope",
+            ),
         ]
 
+    def save(self, *args, **kwargs):
+        if (
+            self.end_date
+            and self.end_date < timezone.localdate()
+            and self.status not in {PsiWorkflowStatus.FAILED, PsiWorkflowStatus.SUCCESSFUL}
+        ):
+            self.status = PsiWorkflowStatus.OVERDUE
+        super().save(*args, **kwargs)
+
     def __str__(self) -> str:
-        return f"ПСИ {self.organization.name}"
+        if self.organization_id:
+            return f"ПСИ {self.organization.name}"
+        if self.license_order_id:
+            lic = self.license_order.license
+            return f"ПСИ {lic.title} (приказ)"
+        return f"ПСИ #{self.pk}"
 
 
 class Comment(TimeAuditModel):
@@ -299,6 +353,16 @@ class Comment(TimeAuditModel):
         on_delete=models.CASCADE,
         related_name="comments",
         verbose_name="Организация",
+        null=True,
+        blank=True,
+    )
+    telecom_operator = models.ForeignKey(
+        "TelecomOperator",
+        on_delete=models.CASCADE,
+        related_name="operator_comments",
+        verbose_name="Оператор связи",
+        null=True,
+        blank=True,
     )
     author = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -313,9 +377,20 @@ class Comment(TimeAuditModel):
         verbose_name = "Комментарий"
         verbose_name_plural = "Комментарии"
         ordering = ("-commented_at",)
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(organization__isnull=False, telecom_operator__isnull=True)
+                    | models.Q(organization__isnull=True, telecom_operator__isnull=False)
+                ),
+                name="comment_org_xor_operator",
+            ),
+        ]
 
     def __str__(self) -> str:
-        return f"Комментарий {self.organization.name}"
+        if self.organization_id:
+            return f"Комментарий {self.organization.name}"
+        return f"Комментарий {self.telecom_operator.name}"
 
 
 class Event(TimeAuditModel):
@@ -370,18 +445,6 @@ class Event(TimeAuditModel):
 
 
 class Document(TimeAuditModel):
-    organization = models.ForeignKey(
-        Organization,
-        on_delete=models.CASCADE,
-        related_name="documents",
-        verbose_name="Организация",
-    )
-    added_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.PROTECT,
-        related_name="documents",
-        verbose_name="Добавил",
-    )
     start_date = models.DateField(null=True, blank=True, verbose_name="Начало действия")
     end_date = models.DateField(null=True, blank=True, verbose_name="Завершение действия")
     document_type = models.ForeignKey(
@@ -391,10 +454,7 @@ class Document(TimeAuditModel):
         verbose_name="Документ",
     )
     number = models.CharField(max_length=255, blank=True, verbose_name="Номер документа")
-    title = models.CharField(max_length=500, verbose_name="Наименование документа")
-    html_url = models.URLField(blank=True, verbose_name="Ссылка на HTML документ")
     file = models.FileField(upload_to="documents/%Y/%m/%d/", null=True, blank=True, verbose_name="Файл")
-    comment = models.TextField(blank=True, verbose_name="Комментарий")
 
     class Meta:
         verbose_name = "Документ"
@@ -405,11 +465,208 @@ class Document(TimeAuditModel):
                 | models.Q(start_date__isnull=True)
                 | models.Q(end_date__gte=models.F("start_date")),
                 name="document_dates_valid",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return self.number or f"Документ #{self.pk}"
+
+
+class TelecomLicenseStatus(models.TextChoices):
+    ACTIVE = "active", "Действующая"
+    INACTIVE = "inactive", "Недействующая"
+
+
+class LicenseOrderNumber(NamedReference):
+    class Meta(NamedReference.Meta):
+        verbose_name = "Номер приказа"
+        verbose_name_plural = "Номера приказов"
+
+
+class TelecomOperator(TimeAuditModel):
+    icon = models.ImageField(upload_to="telecom_operators/icons/", null=True, blank=True, verbose_name="Иконка")
+    name = models.CharField(max_length=500, verbose_name="Наименование организации")
+    inn = models.CharField(
+        max_length=12,
+        db_index=True,
+        validators=[MinLengthValidator(10)],
+        verbose_name="ИНН",
+    )
+    statuses = models.ManyToManyField(
+        OrganizationStatus,
+        related_name="telecom_operators_by_statuses",
+        blank=True,
+        verbose_name="Статусы",
+    )
+    case_number = models.CharField(max_length=128, blank=True, verbose_name="Номер дела")
+    responsible_person = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="responsible_telecom_operators",
+        null=True,
+        blank=True,
+        verbose_name="Ответственное лицо",
+    )
+    sites = models.JSONField(default=list, blank=True, validators=[validate_url_list], verbose_name="Сайты")
+    correspondence_address = models.TextField(blank=True, verbose_name="Адрес для корреспонденции")
+
+    class Meta:
+        verbose_name = "Оператор связи"
+        verbose_name_plural = "Операторы связи"
+        ordering = ("name",)
+        indexes = [
+            models.Index(fields=["inn"]),
+            models.Index(fields=["name"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(fields=["inn", "name"], name="uniq_telecom_operator_inn_name"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.name} ({self.inn})"
+
+
+class TelecomOperatorLicense(TimeAuditModel):
+    telecom_operator = models.ForeignKey(
+        TelecomOperator,
+        on_delete=models.CASCADE,
+        related_name="licenses",
+        verbose_name="Оператор связи",
+    )
+    title = models.CharField(max_length=500, verbose_name="Наименование")
+    number = models.CharField(max_length=255, blank=True, verbose_name="Номер")
+    start_date = models.DateField(null=True, blank=True, verbose_name="Начало действия")
+    end_date = models.DateField(null=True, blank=True, verbose_name="Окончание действия")
+    territory = models.TextField(blank=True, verbose_name="Территория действия")
+    status = models.CharField(
+        max_length=16,
+        choices=TelecomLicenseStatus.choices,
+        default=TelecomLicenseStatus.ACTIVE,
+        verbose_name="Статус",
+    )
+
+    class Meta:
+        verbose_name = "Лицензия"
+        verbose_name_plural = "Лицензии"
+        ordering = ("telecom_operator", "start_date", "title")
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(end_date__isnull=True)
+                | models.Q(start_date__isnull=True)
+                | models.Q(end_date__gte=models.F("start_date")),
+                name="telecom_license_dates_valid",
             )
         ]
 
     def __str__(self) -> str:
         return self.title
+
+
+class LicenseOrder(TimeAuditModel):
+    license = models.ForeignKey(
+        TelecomOperatorLicense,
+        on_delete=models.CASCADE,
+        related_name="orders",
+        verbose_name="Лицензия",
+    )
+    order_number = models.ForeignKey(
+        LicenseOrderNumber,
+        on_delete=models.PROTECT,
+        related_name="license_orders",
+        verbose_name="Номер приказа",
+    )
+    orm_vendor = models.ForeignKey(
+        OrmVendor,
+        on_delete=models.PROTECT,
+        related_name="license_orders",
+        verbose_name="Производитель ТС (ИС) ОРМ",
+    )
+    class Meta:
+        verbose_name = "Приказ лицензии"
+        verbose_name_plural = "Приказы лицензий"
+        ordering = ("license", "pk")
+
+    def __str__(self) -> str:
+        return f"{self.order_number} — {self.license.title}"
+
+
+class DocumentLink(TimeAuditModel):
+    document = models.ForeignKey(
+        Document,
+        on_delete=models.CASCADE,
+        related_name="links",
+        verbose_name="Документ",
+    )
+    content_type = models.ForeignKey(
+        ContentType,
+        on_delete=models.CASCADE,
+        related_name="crm_document_links",
+        verbose_name="Тип сущности",
+    )
+    object_id = models.PositiveBigIntegerField(verbose_name="ID сущности")
+    content_object = GenericForeignKey("content_type", "object_id")
+
+    class Meta:
+        verbose_name = "Связь документа"
+        verbose_name_plural = "Связи документов"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["document", "content_type", "object_id"],
+                name="uniq_document_link_target",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["content_type", "object_id"]),
+            models.Index(fields=["document"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.document} -> {self.content_type}#{self.object_id}"
+
+
+class TelecomOperatorAuditEventType(models.TextChoices):
+    CREATE = "create", "Создание"
+    UPDATE = "update", "Изменение"
+    DELETE = "delete", "Удаление"
+
+
+class TelecomOperatorAuditEvent(models.Model):
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата события")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="telecom_operator_audit_events",
+        null=True,
+        blank=True,
+        verbose_name="Пользователь",
+    )
+    event_type = models.CharField(
+        max_length=16,
+        choices=TelecomOperatorAuditEventType.choices,
+        verbose_name="Тип события",
+    )
+    telecom_operator = models.ForeignKey(
+        TelecomOperator,
+        on_delete=models.SET_NULL,
+        related_name="audit_events",
+        null=True,
+        blank=True,
+        verbose_name="Оператор связи",
+    )
+    operator_name = models.CharField(max_length=500, blank=True, verbose_name="Наименование оператора")
+
+    class Meta:
+        verbose_name = "Событие аудита оператора связи"
+        verbose_name_plural = "События аудита операторов связи"
+        ordering = ("-created_at",)
+        indexes = [
+            models.Index(fields=["created_at"]),
+            models.Index(fields=["event_type"]),
+        ]
+
+    def __str__(self) -> str:
+        label = self.operator_name or (self.telecom_operator.name if self.telecom_operator_id else "—")
+        return f"{self.get_event_type_display()}: {label}"
 
 
 class EventDocumentTemplate(TimeAuditModel):
