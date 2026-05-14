@@ -8,7 +8,6 @@ from apps.crm.models import (
     InteractionStatus,
     OrganizationStatus,
     OrganizationType,
-    PsiStatus,
 )
 
 
@@ -43,7 +42,6 @@ class Command(BaseCommand):
             InteractionObjectType,
             ["Сайт", "Приложение", "Лицензия хостинг", "Лицензия ПД", "Лицензия ТФОП"],
         )
-        upsert_reference(PsiStatus, ["Назначен", "В работе", "Успешное завершение", "Провалены", "Просрочены"])
         upsert_reference(EventType, ["Совещание", "Встреча", "Созвон"])
         upsert_reference(EventStatus, ["Запланировано", "Состоялось", "Не состоялось"])
         upsert_reference(

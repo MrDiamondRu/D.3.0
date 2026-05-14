@@ -211,14 +211,15 @@ def fetch_favicon_for_page_url(page_url: str) -> bytes | None:
     return None
 
 
-def maybe_assign_favicon_from_sites(organization) -> bool:
+def maybe_assign_favicon_from_sites(obj) -> bool:
     """
-    Если у организации нет иконки, но есть сайты — подставить favicon с первого URL.
+    Если у записи нет иконки, но есть сайты — подставить favicon с первого URL.
+    Подходит для моделей с полями icon, sites (например Организация, Оператор связи).
     Возвращает True, если файл иконки был записан.
     """
-    if organization.icon:
+    if obj.icon:
         return False
-    sites = organization.sites or []
+    sites = obj.sites or []
     if not sites:
         return False
 
@@ -233,7 +234,7 @@ def maybe_assign_favicon_from_sites(organization) -> bool:
     if not png:
         return False
 
-    name = f"favicon_{organization.pk}.png"
-    organization.icon.save(name, ContentFile(png), save=False)
-    organization.save(update_fields=["icon"])
+    name = f"favicon_{obj.pk}.png"
+    obj.icon.save(name, ContentFile(png), save=False)
+    obj.save(update_fields=["icon"])
     return True
