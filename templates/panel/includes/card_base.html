@@ -1,0 +1,25 @@
+<div class="panel-organization-main">
+  <div class="panel-organization-main-top">
+    <div class="panel-organization-icon-wrap">
+      {% if item.icon %}
+        <img src="{{ item.icon.url }}" alt="{{ item.name }}" class="panel-organization-icon">
+      {% elif use_org_type_icon and item.organization_type.icon %}
+        <img src="{{ item.organization_type.icon.url }}" alt="{{ item.organization_type }}" class="panel-organization-icon">
+      {% elif fallback_icon_url %}
+        <img src="{{ fallback_icon_url }}" alt="" class="panel-organization-icon">
+      {% else %}
+        <div class="panel-organization-icon panel-organization-icon-placeholder">
+          {{ item.name|first|upper }}
+        </div>
+      {% endif %}
+    </div>
+    <div class="panel-organization-title-block">
+      <p class="panel-organization-inn">ИНН {{ item.inn }}</p>
+      <h3 class="panel-organization-title">{{ item.name }}</h3>
+    </div>
+  </div>
+  <div class="panel-organization-main-bottom">
+    <p class="panel-organization-type">{{ type_label }}</p>
+    <p class="panel-organization-case">Дело № {{ item.case_number|default:"-" }}</p>
+  </div>
+</div>

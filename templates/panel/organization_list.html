@@ -41,40 +41,25 @@
     <div class="panel-organization-cards">
       {% for organization in organizations %}
         <article class="panel-organization-card" data-href="{% url 'panel:organization_detail' organization.pk %}">
-          <div class="panel-organization-main">
-            <div class="panel-organization-icon-wrap">
-              {% if organization.icon %}
-                <img src="{{ organization.icon.url }}" alt="{{ organization.name }}" class="panel-organization-icon">
-              {% elif organization.organization_type.icon %}
-                <img src="{{ organization.organization_type.icon.url }}" alt="{{ organization.organization_type }}" class="panel-organization-icon">
-              {% else %}
-                <div class="panel-organization-icon panel-organization-icon-placeholder">
-                  {{ organization.name|first|upper }}
-                </div>
-              {% endif %}
+          {% include "panel/includes/card_base.html" with item=organization type_label=organization.organization_type use_org_type_icon=True fallback_icon_url="" %}
+          <div class="panel-organization-extra">
+            <div class="panel-organization-extra-row">
+              <span>Ответственное лицо: {{ organization.responsible_person|default:"—" }}</span>
             </div>
-            <div class="panel-organization-title-block">
-              <h3 class="panel-organization-title">{{ organization.name }}</h3>
-              <p class="panel-organization-type">{{ organization.organization_type }}</p>
+            <div class="panel-organization-extra-row">
+              <span>Статус взаимодействия: {{ organization.interaction_status|default:"—" }}</span>
             </div>
-          </div>
-
-          <div class="panel-organization-meta">
-            <div><span>ИНН:</span> {{ organization.inn }}</div>
-            <div><span>Ответственный:</span> {{ organization.responsible_person|default:"-" }}</div>
-            <div><span>Номер дела:</span> {{ organization.case_number|default:"-" }}</div>
-          </div>
-
-          <div class="panel-organization-status">
-            {% with organization.statuses.all as statuses %}
-              {% if statuses %}
-                <div class="panel-status-tags">
-                  {% for status in statuses %}
-                    <span class="panel-status-tag">{{ status.name }}</span>
-                  {% endfor %}
-                </div>
-              {% endif %}
-            {% endwith %}
+            <div class="panel-organization-extra-row">
+              {% with organization.psis.all as psis %}
+                {% if psis %}
+                  {% with psis.0 as psi %}
+                    <span>Статус ПСИ: {{ psi.assigned_date|date:"d.m.Y"|default:"дата не указана" }} ({{ psi.responsible|default:"—" }}) - {{ psi.status|default:"—" }}</span>
+                  {% endwith %}
+                {% else %}
+                  <span>Статус ПСИ: не назначены</span>
+                {% endif %}
+              {% endwith %}
+            </div>
           </div>
         </article>
       {% empty %}

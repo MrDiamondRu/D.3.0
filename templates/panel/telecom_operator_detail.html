@@ -1,0 +1,477 @@
+{% extends "panel/base.html" %}
+
+{% block title %}{{ telecom_operator.name }} | {{ panel_title }}{% endblock %}
+
+{% block content %}
+  <section class="panel-toolbar">
+    <div class="panel-toolbar-title">
+      <div class="panel-telecom-page-title">
+        {% if telecom_operator.icon %}
+          <img src="{{ telecom_operator.icon.url }}" alt="" class="panel-telecom-page-title-icon">
+        {% else %}
+          <img src="{{ telecom_default_icon_url }}" alt="" class="panel-telecom-page-title-icon">
+        {% endif %}
+        <div class="panel-telecom-page-title-text">
+          <h1>{{ telecom_operator.name }}</h1>
+          <p class="panel-organization-inn">ИНН {{ telecom_operator.inn }}</p>
+          <p>Оператор связи</p>
+        </div>
+      </div>
+    </div>
+    <div class="panel-toolbar-actions">
+      <a class="panel-btn panel-btn-secondary" href="{% url 'panel:telecom_operator_list' %}">К списку</a>
+    </div>
+  </section>
+
+  {% with telecom_operator.statuses.all as statuses %}
+    {% if statuses %}
+      <div class="panel-status-tags panel-status-tags-detail">
+        {% for status in statuses %}
+          <span class="panel-status-tag">{{ status.name }}</span>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  <section class="panel-card">
+    <div class="panel-tabs" data-tabs>
+      <div class="panel-tabs-nav" role="tablist" aria-label="Разделы информации">
+        <button type="button" class="panel-tab-btn{% if active_tab == 'info' %} panel-tab-btn-active{% endif %}" role="tab" aria-selected="{% if active_tab == 'info' %}true{% else %}false{% endif %}" data-tab-target="info">Информация</button>
+        <button type="button" class="panel-tab-btn{% if active_tab == 'contacts' %} panel-tab-btn-active{% endif %}" role="tab" aria-selected="{% if active_tab == 'contacts' %}true{% else %}false{% endif %}" data-tab-target="contacts">Контакты</button>
+        <button type="button" class="panel-tab-btn{% if active_tab == 'licenses' %} panel-tab-btn-active{% endif %}" role="tab" aria-selected="{% if active_tab == 'licenses' %}true{% else %}false{% endif %}" data-tab-target="licenses">Лицензии</button>
+        <button type="button" class="panel-tab-btn{% if active_tab == 'history' %} panel-tab-btn-active{% endif %}" role="tab" aria-selected="{% if active_tab == 'history' %}true{% else %}false{% endif %}" data-tab-target="history">История</button>
+      </div>
+
+      <div class="panel-tab-content{% if active_tab == 'info' %} panel-tab-content-active{% endif %}" data-tab-panel="info">
+        <div class="panel-detail-grid">
+          <div class="panel-detail-item">
+            <span>Номер дела</span>
+            <strong>{{ telecom_operator.case_number|default:"-" }}</strong>
+          </div>
+          <div class="panel-detail-item">
+            <span>Ответственное лицо</span>
+            <strong>{{ telecom_operator.responsible_person|default:"-" }}</strong>
+          </div>
+          <div class="panel-detail-item panel-detail-item-full">
+            <span>Адрес для корреспонденции</span>
+            <strong>{{ telecom_operator.correspondence_address|default:"-" }}</strong>
+          </div>
+          <div class="panel-detail-item panel-detail-item-full">
+            <span>Сайт</span>
+            {% if telecom_operator.sites %}
+              {% with telecom_operator.sites|first as main_site %}
+                <a class="panel-link panel-link-clean" href="{{ main_site }}" target="_blank" rel="noopener noreferrer">{{ main_site }}</a>
+              {% endwith %}
+            {% else %}
+              <strong>-</strong>
+            {% endif %}
+          </div>
+          <div class="panel-detail-item">
+            <span>Создано</span>
+            <strong>{{ telecom_operator.created_at|date:"d.m.Y H:i" }}</strong>
+          </div>
+          <div class="panel-detail-item">
+            <span>Обновлено</span>
+            <strong>{{ telecom_operator.updated_at|date:"d.m.Y H:i" }}</strong>
+          </div>
+        </div>
+        <div class="panel-tab-panel-actions panel-tab-panel-actions-bottom">
+          <a class="panel-btn panel-btn-primary" href="{% url 'panel:telecom_operator_edit' telecom_operator.pk %}">
+            Редактировать
+          </a>
+        </div>
+      </div>
+
+      <div class="panel-tab-content{% if active_tab == 'contacts' %} panel-tab-content-active{% endif %}" data-tab-panel="contacts">
+        {% if operator_contacts %}
+          <section class="panel-card panel-contact-list-card">
+            <div class="panel-contact-list-head">
+              <span>Должность</span>
+              <span>Имя</span>
+              <span>Телефон</span>
+              <span>Email</span>
+              <span>Информация</span>
+              <span>Кто добавил</span>
+              <span>Дата редактирования</span>
+              <span>Действия</span>
+            </div>
+            <div class="panel-contact-list">
+              {% for contact in operator_contacts %}
+                <article class="panel-contact-item">
+                  <div class="panel-contact-cell" data-label="Должность">{{ contact.position|default:"—" }}</div>
+                  <div class="panel-contact-cell panel-contact-name" data-label="Имя">{{ contact.first_name|default:"—" }}</div>
+                  <div class="panel-contact-cell" data-label="Телефон">
+                    {% if contact.phone %}
+                      <div class="panel-copy-field">
+                        <span>{{ contact.phone }}</span>
+                        <button type="button" class="panel-copy-btn" data-copy="{{ contact.phone }}" title="Копировать" aria-label="Копировать телефон">📋</button>
+                      </div>
+                    {% else %}
+                      —
+                    {% endif %}
+                  </div>
+                  <div class="panel-contact-cell" data-label="Email">
+                    {% if contact.email %}
+                      <div class="panel-copy-field">
+                        <a href="mailto:{{ contact.email }}" class="panel-link panel-link-clean">{{ contact.email }}</a>
+                        <button type="button" class="panel-copy-btn" data-copy="{{ contact.email }}" title="Копировать" aria-label="Копировать email">📋</button>
+                      </div>
+                    {% else %}
+                      —
+                    {% endif %}
+                  </div>
+                  <div class="panel-contact-cell" data-label="Информация">{{ contact.extra_info|default:"—" }}</div>
+                  <div class="panel-contact-cell" data-label="Кто добавил">
+                    {% if contact.created_by %}
+                      {{ contact.created_by.get_full_name|default:contact.created_by.username }}
+                    {% else %}
+                      —
+                    {% endif %}
+                  </div>
+                  <div class="panel-contact-cell" data-label="Дата редактирования">{{ contact.updated_at|date:"d.m.Y H:i" }}</div>
+                  <div class="panel-contact-cell" data-label="Действия">
+                    <div class="panel-contact-actions">
+                      <button
+                        type="button"
+                        class="panel-icon-action-btn"
+                        title="Редактировать"
+                        aria-label="Редактировать"
+                        data-contact-edit
+                        data-contact-id="{{ contact.pk }}"
+                        data-contact-position="{{ contact.position|default:'' }}"
+                        data-contact-first-name="{{ contact.first_name|default:'' }}"
+                        data-contact-phone="{{ contact.phone|default:'' }}"
+                        data-contact-email="{{ contact.email|default:'' }}"
+                        data-contact-extra="{{ contact.extra_info|default:'' }}"
+                      >✎</button>
+                      <form method="post">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="delete_contact">
+                        <input type="hidden" name="contact_id" value="{{ contact.pk }}">
+                        <button type="submit" class="panel-icon-action-btn panel-icon-action-btn-danger" title="Удалить" aria-label="Удалить">🗑</button>
+                      </form>
+                    </div>
+                  </div>
+                </article>
+              {% endfor %}
+            </div>
+            <div class="panel-contact-footer-actions">
+              <button type="button" class="panel-btn panel-btn-primary" data-contact-create>Добавить</button>
+            </div>
+          </section>
+        {% else %}
+          <div class="panel-empty">Связанные контакты пока не добавлены.</div>
+          <div class="panel-contact-footer-actions">
+            <button type="button" class="panel-btn panel-btn-primary" data-contact-create>Добавить</button>
+          </div>
+        {% endif %}
+      </div>
+      <div class="panel-tab-content{% if active_tab == 'licenses' %} panel-tab-content-active{% endif %}" data-tab-panel="licenses">
+        {% if operator_licenses %}
+          <div class="panel-license-cards">
+            {% for license in operator_licenses %}
+              <a
+                class="panel-license-card"
+                href="{% url 'panel:telecom_license_detail' license.pk %}"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <div class="panel-license-grid">
+                  <div class="panel-license-cell panel-license-cell-name">
+                    <span>Название лицензии</span>
+                    <strong>{{ license.title }}</strong>
+                  </div>
+                  <div class="panel-license-cell panel-license-cell-orders">
+                    <span>Приказы со статусами</span>
+                    <div class="panel-license-orders">
+                      {% for order in license.orders.all %}
+                        <span class="panel-license-order-tag {% if order.pk in orders_with_active_docs %}panel-license-order-tag-active{% else %}panel-license-order-tag-inactive{% endif %}">
+                          {{ order.order_number.name }}
+                        </span>
+                      {% empty %}
+                        <span class="panel-license-order-tag panel-license-order-tag-inactive">Нет приказов</span>
+                      {% endfor %}
+                    </div>
+                  </div>
+                  <div class="panel-license-cell">
+                    <span>Номер лицензии</span>
+                    <strong>{{ license.number|default:"—" }}</strong>
+                  </div>
+                  <div class="panel-license-cell">
+                    <span>Дата окончания действия лицензии</span>
+                    <strong>{{ license.end_date|date:"d.m.Y"|default:"—" }}</strong>
+                  </div>
+                  <div class="panel-license-cell">
+                    <span>Статус лицензии</span>
+                    <strong>{{ license.get_status_display }}</strong>
+                  </div>
+                </div>
+              </a>
+            {% endfor %}
+          </div>
+          <div class="panel-license-actions">
+            <form method="post">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="sync_licenses_rkn">
+              <button type="submit" class="panel-btn panel-btn-secondary">Обновить из РКН</button>
+            </form>
+          </div>
+        {% else %}
+          <div class="panel-empty">Лицензии пока не добавлены.</div>
+          <div class="panel-license-actions">
+            <form method="post">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="sync_licenses_rkn">
+              <button type="submit" class="panel-btn panel-btn-secondary">Обновить из РКН</button>
+            </form>
+          </div>
+        {% endif %}
+      </div>
+      <div class="panel-tab-content{% if active_tab == 'history' %} panel-tab-content-active{% endif %}" data-tab-panel="history">
+        {% if audit_events %}
+          <div class="panel-audit-table-wrap">
+            <table class="panel-audit-table">
+              <thead>
+                <tr>
+                  <th>Кто</th>
+                  <th>Когда</th>
+                  <th>Что сделал</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for event in audit_events %}
+                  <tr>
+                    <td>{{ event.user|default:"Система" }}</td>
+                    <td>{{ event.created_at|date:"d.m.Y H:i" }}</td>
+                    <td>
+                      <span class="panel-audit-badge panel-audit-badge-{{ event.event_type }}">
+                        {{ event.get_event_type_display }}
+                      </span>
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <div class="panel-empty">История действий пока пуста.</div>
+        {% endif %}
+      </div>
+    </div>
+  </section>
+
+  <section class="panel-card panel-chat-card">
+    <div class="panel-chat-header">
+      <h2>Комментарии</h2>
+    </div>
+
+    <div class="panel-chat-thread">
+      {% for comment in operator_comments %}
+        <article class="panel-chat-message{% if comment.author_id == request.user.id %} panel-chat-message-own{% endif %}">
+          <div class="panel-chat-message-meta">
+            <span class="panel-chat-author">{{ comment.author }}</span>
+            <time>{{ comment.commented_at|date:"d.m.Y H:i" }}</time>
+          </div>
+          <div class="panel-chat-bubble">{{ comment.text|linebreaksbr }}</div>
+        </article>
+      {% empty %}
+        <div class="panel-empty">Комментариев пока нет. Начните обсуждение первым.</div>
+      {% endfor %}
+    </div>
+
+    <form method="post" class="panel-chat-form">
+      {% csrf_token %}
+      <input
+        type="text"
+        name="comment_text"
+        class="panel-input panel-chat-input"
+        placeholder="Напишите комментарий..."
+      >
+      <button type="submit" class="panel-btn panel-btn-primary">Отправить</button>
+    </form>
+  </section>
+
+  <script>
+    window.addEventListener("DOMContentLoaded", function () {
+      var tabs = document.querySelector("[data-tabs]");
+      if (!tabs) return;
+      var buttons = tabs.querySelectorAll("[data-tab-target]");
+      var panels = tabs.querySelectorAll("[data-tab-panel]");
+      var params = new URLSearchParams(window.location.search);
+      var initialTab = params.get("tab");
+
+      function activateTab(target) {
+        if (!target) return;
+        buttons.forEach(function (b) {
+          var active = b.getAttribute("data-tab-target") === target;
+          b.classList.toggle("panel-tab-btn-active", active);
+          b.setAttribute("aria-selected", active ? "true" : "false");
+        });
+        panels.forEach(function (panel) {
+          panel.classList.toggle(
+            "panel-tab-content-active",
+            panel.getAttribute("data-tab-panel") === target
+          );
+        });
+      }
+
+      buttons.forEach(function (button) {
+        button.addEventListener("click", function () {
+          var target = button.getAttribute("data-tab-target");
+          activateTab(target);
+        });
+      });
+
+      if (initialTab && tabs.querySelector('[data-tab-target="' + initialTab + '"]')) {
+        activateTab(initialTab);
+        if (window.history && window.history.replaceState) {
+          var cleanUrl = window.location.pathname + (window.location.hash || "");
+          window.history.replaceState({}, document.title, cleanUrl);
+        }
+      }
+
+      tabs.querySelectorAll("[data-copy]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var value = btn.getAttribute("data-copy") || "";
+          if (!value) return;
+          var copyPromise = (navigator.clipboard && navigator.clipboard.writeText)
+            ? navigator.clipboard.writeText(value)
+            : Promise.reject();
+          copyPromise.catch(function () {
+            var helper = document.createElement("textarea");
+            helper.value = value;
+            document.body.appendChild(helper);
+            helper.select();
+            document.execCommand("copy");
+            document.body.removeChild(helper);
+          }).then(function () {
+            var old = btn.textContent;
+            btn.textContent = "✓";
+            btn.disabled = true;
+            window.setTimeout(function () {
+              btn.textContent = old;
+              btn.disabled = false;
+            }, 1200);
+          });
+        });
+      });
+
+      var contactModal = document.querySelector("[data-contact-modal]");
+      var contactModalClose = document.querySelector("[data-contact-modal-close]");
+      var contactForm = document.querySelector("[data-contact-form]");
+      if (contactModal && contactForm) {
+        var idInput = contactForm.querySelector("[name='contact_id']");
+        var positionInput = contactForm.querySelector("[name='position']");
+        var firstNameInput = contactForm.querySelector("[name='first_name']");
+        var phoneInput = contactForm.querySelector("[name='phone']");
+        var emailInput = contactForm.querySelector("[name='email']");
+        var extraInput = contactForm.querySelector("[name='extra_info']");
+        var titleNode = contactModal.querySelector("[data-contact-modal-title]");
+
+        function openContactModal(isEdit, data) {
+          titleNode.textContent = isEdit ? "Редактирование контакта" : "Добавление контакта";
+          idInput.value = isEdit ? (data.id || "") : "";
+          positionInput.value = data.position || "";
+          firstNameInput.value = data.firstName || "";
+          phoneInput.value = data.phone || "";
+          emailInput.value = data.email || "";
+          extraInput.value = data.extra || "";
+          contactModal.hidden = false;
+        }
+
+        function closeContactModal() {
+          contactModal.hidden = true;
+        }
+
+        document.querySelectorAll("[data-contact-create]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            openContactModal(false, {});
+          });
+        });
+        document.querySelectorAll("[data-contact-edit]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            openContactModal(true, {
+              id: btn.getAttribute("data-contact-id") || "",
+              position: btn.getAttribute("data-contact-position") || "",
+              firstName: btn.getAttribute("data-contact-first-name") || "",
+              phone: btn.getAttribute("data-contact-phone") || "",
+              email: btn.getAttribute("data-contact-email") || "",
+              extra: btn.getAttribute("data-contact-extra") || ""
+            });
+          });
+        });
+        if (contactModalClose) {
+          contactModalClose.addEventListener("click", closeContactModal);
+        }
+        contactModal.addEventListener("click", function (e) {
+          if (e.target === contactModal) closeContactModal();
+        });
+      }
+
+      var rknModal = document.querySelector("[data-rkn-error-modal]");
+      var rknModalCloseButtons = document.querySelectorAll("[data-rkn-error-close]");
+      if (rknModal) {
+        function closeRknModal() {
+          rknModal.hidden = true;
+        }
+        rknModalCloseButtons.forEach(function (btn) {
+          btn.addEventListener("click", closeRknModal);
+        });
+        rknModal.addEventListener("click", function (e) {
+          if (e.target === rknModal) closeRknModal();
+        });
+      }
+
+    });
+  </script>
+  <div class="panel-modal-backdrop" data-contact-modal hidden>
+    <div class="panel-modal-card" role="dialog" aria-modal="true" aria-label="Контакт">
+      <div class="panel-modal-head">
+        <h3 data-contact-modal-title>Добавление контакта</h3>
+        <button type="button" class="panel-modal-close" data-contact-modal-close aria-label="Закрыть">✕</button>
+      </div>
+      <form method="post" class="panel-form panel-contact-modal-form" data-contact-form>
+        {% csrf_token %}
+        <input type="hidden" name="action" value="save_contact">
+        <input type="hidden" name="contact_id" value="">
+        <label class="panel-form-field">
+          <span class="panel-form-label">Должность</span>
+          <input type="text" name="position" class="panel-input">
+        </label>
+        <label class="panel-form-field">
+          <span class="panel-form-label">Имя *</span>
+          <input type="text" name="first_name" class="panel-input" required>
+        </label>
+        <label class="panel-form-field">
+          <span class="panel-form-label">Телефон</span>
+          <input type="text" name="phone" class="panel-input">
+        </label>
+        <label class="panel-form-field">
+          <span class="panel-form-label">Email</span>
+          <input type="email" name="email" class="panel-input">
+        </label>
+        <label class="panel-form-field">
+          <span class="panel-form-label">Информация</span>
+          <textarea name="extra_info" class="panel-input panel-textarea" rows="3"></textarea>
+        </label>
+        <div class="panel-form-actions">
+          <button type="submit" class="panel-btn panel-btn-primary">Сохранить</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  <div class="panel-modal-backdrop" data-rkn-error-modal {% if not rkn_unavailable %}hidden{% endif %}>
+    <div class="panel-modal-card panel-modal-card-rkn" role="dialog" aria-modal="true" aria-label="Ошибка обновления из РКН">
+      <div class="panel-modal-head">
+        <h3>Сайт РКН недоступен</h3>
+        <button type="button" class="panel-modal-close" data-rkn-error-close aria-label="Закрыть">✕</button>
+      </div>
+      <p class="panel-modal-text">
+        Не удалось получить данные из реестра РКН. Проверьте доступ к сайту РКН и попробуйте обновить позже.
+      </p>
+      <div class="panel-modal-actions">
+        <button type="button" class="panel-btn panel-btn-secondary" data-rkn-error-close>Понятно</button>
+      </div>
+    </div>
+  </div>
+{% endblock %}

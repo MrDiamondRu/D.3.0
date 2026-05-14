@@ -1,0 +1,80 @@
+{% extends "panel/base.html" %}
+
+{% block title %}Контакты | {{ panel_title }}{% endblock %}
+
+{% block content %}
+  <section class="panel-toolbar">
+    <form method="get" class="panel-filters">
+      <input
+        type="text"
+        name="q"
+        value="{{ search_query }}"
+        class="panel-input panel-input-compact panel-search-compact"
+        placeholder="Поиск по имени, должности, телефону, email..."
+      >
+      <button class="panel-btn panel-btn-secondary" type="submit">Найти</button>
+      <a class="panel-btn panel-btn-secondary" href="{% url 'panel:contacts' %}">Сброс</a>
+    </form>
+  </section>
+
+  <section class="panel-card panel-contact-list-card">
+    <div class="panel-contact-list-head">
+      <span>Должность</span>
+      <span>Имя</span>
+      <span>Телефон</span>
+      <span>Email</span>
+      <span>Кто добавил</span>
+      <span>Дата редактирования</span>
+    </div>
+
+    <div class="panel-contact-list">
+      {% for contact in contacts %}
+        <article class="panel-contact-item">
+          <div class="panel-contact-cell" data-label="Должность">
+            {{ contact.position|default:"—" }}
+            <div class="panel-contact-linked">
+              {% if contact.organization %}
+                Организация: {{ contact.organization.name }}
+              {% elif contact.telecom_operator %}
+                Оператор: {{ contact.telecom_operator.name }}
+              {% else %}
+                —
+              {% endif %}
+            </div>
+          </div>
+          <div class="panel-contact-cell panel-contact-name" data-label="Имя">{{ contact.first_name|default:"—" }}</div>
+          <div class="panel-contact-cell" data-label="Телефон">{{ contact.phone|default:"—" }}</div>
+          <div class="panel-contact-cell" data-label="Email">
+            {% if contact.email %}
+              <a href="mailto:{{ contact.email }}" class="panel-link">{{ contact.email }}</a>
+            {% else %}
+              —
+            {% endif %}
+          </div>
+          <div class="panel-contact-cell" data-label="Кто добавил">
+            {% if contact.created_by %}
+              {{ contact.created_by.get_full_name|default:contact.created_by.username }}
+            {% else %}
+              —
+            {% endif %}
+          </div>
+          <div class="panel-contact-cell" data-label="Дата редактирования">{{ contact.updated_at|date:"d.m.Y H:i" }}</div>
+        </article>
+      {% empty %}
+        <div class="panel-empty panel-contact-empty">Контакты не найдены.</div>
+      {% endfor %}
+    </div>
+  </section>
+
+  {% if is_paginated %}
+    <nav class="panel-pagination">
+      {% if page_obj.has_previous %}
+        <a class="panel-btn panel-btn-secondary" href="?q={{ search_query|urlencode }}&page={{ page_obj.previous_page_number }}">Назад</a>
+      {% endif %}
+      <span class="panel-pagination-info">Страница {{ page_obj.number }} из {{ page_obj.paginator.num_pages }}</span>
+      {% if page_obj.has_next %}
+        <a class="panel-btn panel-btn-secondary" href="?q={{ search_query|urlencode }}&page={{ page_obj.next_page_number }}">Вперед</a>
+      {% endif %}
+    </nav>
+  {% endif %}
+{% endblock %}

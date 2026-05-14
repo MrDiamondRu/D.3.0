@@ -1,0 +1,194 @@
+{% extends "panel/base.html" %}
+
+{% block title %}{{ form_title }} | {{ panel_title }}{% endblock %}
+
+{% block content %}
+  <section class="panel-toolbar">
+    <div class="panel-toolbar-title">
+      <h1>{{ form_title }}</h1>
+      <p>Редактирование данных оператора связи</p>
+    </div>
+    <div class="panel-toolbar-actions">
+      <a class="panel-btn panel-btn-secondary" href="{% url 'panel:telecom_operator_detail' telecom_operator.pk %}">Отмена</a>
+    </div>
+  </section>
+
+  <section class="panel-card">
+    {% if form.non_field_errors %}
+      <div class="panel-form-errors">
+        {% for error in form.non_field_errors %}
+          <p>{{ error }}</p>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    <form method="post" enctype="multipart/form-data" class="panel-form">
+      {% csrf_token %}
+      {% for hidden_field in form.hidden_fields %}
+        {{ hidden_field }}
+      {% endfor %}
+
+      <div class="panel-form-grid">
+        {% for field in form.visible_fields %}
+          {% if field.name != 'icon' %}
+          <label class="panel-form-field{% if field.name == 'correspondence_address' or field.name == 'sites_text' %} panel-form-field-full{% endif %}">
+            <span class="panel-form-label">{{ field.label }}</span>
+            {% if field.name == 'responsible_person' %}
+              <div class="panel-searchable-select">
+                <input
+                  type="text"
+                  class="panel-input panel-searchable-select-input"
+                  placeholder="Поиск пользователя..."
+                  data-select-search-target="{{ field.id_for_label }}"
+                >
+                {{ field }}
+              </div>
+            {% elif field.name == 'statuses' %}
+              <div class="panel-status-ms" data-panel-status-ms>
+                <button
+                  type="button"
+                  class="panel-input panel-status-ms-trigger"
+                  id="{{ field.auto_id }}_trigger"
+                  aria-haspopup="listbox"
+                  aria-expanded="false"
+                >
+                  <span class="panel-status-ms-summary" data-status-ms-summary data-placeholder="Выберите статусы..."></span>
+                  <span class="panel-status-ms-chevron" aria-hidden="true">▾</span>
+                </button>
+                <div
+                  class="panel-status-ms-dropdown"
+                  id="{{ field.auto_id }}_dropdown"
+                  role="listbox"
+                  aria-labelledby="{{ field.auto_id }}_trigger"
+                  hidden
+                >
+                  {% for st in field.field.queryset %}
+                    <label class="panel-status-ms-option">
+                      <input
+                        type="checkbox"
+                        name="statuses"
+                        value="{{ st.pk }}"
+                        id="id_statuses_{{ st.pk }}"
+                        {% if field.value and st.pk in field.value %}checked{% endif %}
+                      >
+                      <span>{{ st.name }}</span>
+                    </label>
+                  {% endfor %}
+                </div>
+              </div>
+            {% else %}
+              {{ field }}
+            {% endif %}
+            {% if field.help_text %}
+              <span class="panel-form-help">{{ field.help_text }}</span>
+            {% endif %}
+            {% if field.errors %}
+              <span class="panel-form-error">{{ field.errors|striptags }}</span>
+            {% endif %}
+          </label>
+          {% endif %}
+        {% endfor %}
+
+        {% with icon_field=form.icon %}
+          <div class="panel-form-field panel-form-field-full panel-form-field-file">
+            <span class="panel-form-label">{{ icon_field.label }}</span>
+            <div class="panel-icon-field-actions">
+              <input type="file" name="{{ icon_field.html_name }}" id="{{ icon_field.auto_id }}" class="panel-icon-native-input">
+              <label for="{{ icon_field.auto_id }}" class="panel-btn panel-btn-secondary">Изменить</label>
+              {% if icon_field.value %}
+                <label class="panel-btn panel-btn-secondary panel-icon-clear-btn">
+                  <input type="checkbox" name="{{ icon_field.html_name }}-clear" id="{{ icon_field.auto_id }}_clear">
+                  Очистить
+                </label>
+              {% endif %}
+            </div>
+            {% if icon_field.errors %}
+              <span class="panel-form-error">{{ icon_field.errors|striptags }}</span>
+            {% endif %}
+          </div>
+        {% endwith %}
+      </div>
+
+      <div class="panel-form-actions">
+        <button class="panel-btn panel-btn-primary" type="submit">{{ submit_label }}</button>
+      </div>
+    </form>
+  </section>
+
+  <script>
+    document.querySelectorAll("[data-select-search-target]").forEach(function (searchInput) {
+      const targetId = searchInput.getAttribute("data-select-search-target");
+      const select = document.getElementById(targetId);
+      if (!select) return;
+
+      const originalOptions = Array.from(select.options).map(function (option) {
+        return { value: option.value, text: option.text, selected: option.selected };
+      });
+
+      searchInput.addEventListener("input", function () {
+        const term = searchInput.value.trim().toLowerCase();
+        const currentValue = select.value;
+        const filtered = originalOptions.filter(function (option, index) {
+          if (index === 0) return true;
+          return option.text.toLowerCase().includes(term);
+        });
+
+        select.innerHTML = "";
+        filtered.forEach(function (option) {
+          const el = document.createElement("option");
+          el.value = option.value;
+          el.textContent = option.text;
+          if (option.value === currentValue) {
+            el.selected = true;
+          }
+          select.appendChild(el);
+        });
+      });
+    });
+
+    document.querySelectorAll("[data-panel-status-ms]").forEach(function (root) {
+      const trigger = root.querySelector(".panel-status-ms-trigger");
+      const dropdown = root.querySelector(".panel-status-ms-dropdown");
+      const summary = root.querySelector("[data-status-ms-summary]");
+      const checkboxes = root.querySelectorAll('input[type="checkbox"][name="statuses"]');
+      if (!trigger || !dropdown || !summary) return;
+      const placeholder = summary.dataset.placeholder || "—";
+
+      function updateSummary() {
+        const names = [];
+        checkboxes.forEach(function (cb) {
+          if (cb.checked) {
+            const label = cb.closest("label");
+            const text = label ? label.querySelector("span") : null;
+            if (text) names.push(text.textContent.trim());
+          }
+        });
+        summary.textContent = names.length ? names.join(", ") : placeholder;
+      }
+
+      function setOpen(open) {
+        trigger.setAttribute("aria-expanded", open ? "true" : "false");
+        dropdown.hidden = !open;
+      }
+
+      updateSummary();
+      checkboxes.forEach(function (cb) {
+        cb.addEventListener("change", updateSummary);
+      });
+
+      trigger.addEventListener("click", function (e) {
+        e.preventDefault();
+        const open = trigger.getAttribute("aria-expanded") === "true";
+        setOpen(!open);
+      });
+
+      document.addEventListener("click", function (e) {
+        if (!root.contains(e.target)) setOpen(false);
+      });
+
+      document.addEventListener("keydown", function (e) {
+        if (e.key === "Escape" && !dropdown.hidden) setOpen(false);
+      });
+    });
+  </script>
+{% endblock %}
