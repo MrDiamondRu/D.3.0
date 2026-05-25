@@ -1,13 +1,11 @@
 from django.core.management.base import BaseCommand
 
 from apps.crm.models import (
-    DocumentType,
     EventStatus,
     EventType,
     InteractionObjectType,
     InteractionStatus,
     OrganizationStatus,
-    OrganizationType,
 )
 
 
@@ -20,16 +18,6 @@ class Command(BaseCommand):
     help = "Заполняет базовые справочники CRM."
 
     def handle(self, *args, **options):
-        upsert_reference(
-            OrganizationType,
-            [
-                "ОРИ",
-                "Организатор распространения информации",
-                "Хостинг",
-                "Источник ЕИАС",
-                "Оператор связи",
-            ],
-        )
         upsert_reference(
             OrganizationStatus,
             ["Требуется действие", "Действий не требуется", "Завершено взаимодействие"],
@@ -44,8 +32,4 @@ class Command(BaseCommand):
         )
         upsert_reference(EventType, ["Совещание", "Встреча", "Созвон"])
         upsert_reference(EventStatus, ["Запланировано", "Состоялось", "Не состоялось"])
-        upsert_reference(
-            DocumentType,
-            ["Протокол", "Акт", "Соглашение", "Письмо", "Инструкция", "Информационная модель"],
-        )
         self.stdout.write(self.style.SUCCESS("Справочники успешно заполнены."))

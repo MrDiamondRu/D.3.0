@@ -3,7 +3,7 @@ from django.contrib.auth import get_user_model
 
 from apps.crm.favicon_fetch import maybe_assign_favicon_from_sites
 from apps.crm.models import (
-    Organization,
+    Ori,
     OrganizationStatus,
     TelecomOperator,
     TelecomOperatorLicense,
@@ -15,7 +15,7 @@ from apps.crm.models import (
 )
 
 
-class OrganizationForm(forms.ModelForm):
+class OriForm(forms.ModelForm):
     responsible_person = forms.ModelChoiceField(
         label="Ответственное лицо",
         required=False,
@@ -47,12 +47,11 @@ class OrganizationForm(forms.ModelForm):
     )
 
     class Meta:
-        model = Organization
+        model = Ori
         fields = [
             "icon",
             "name",
             "inn",
-            "organization_type",
             "statuses",
             "interaction_status",
             "case_number",
@@ -69,7 +68,6 @@ class OrganizationForm(forms.ModelForm):
             "icon": forms.ClearableFileInput(attrs={"class": "panel-file-input"}),
             "name": forms.TextInput(attrs={"class": "panel-input"}),
             "inn": forms.TextInput(attrs={"class": "panel-input", "maxlength": 12}),
-            "organization_type": forms.Select(attrs={"class": "panel-input"}),
             "interaction_status": forms.Select(attrs={"class": "panel-input"}),
             "case_number": forms.TextInput(attrs={"class": "panel-input"}),
             "in_registry": forms.TextInput(attrs={"class": "panel-input"}),
@@ -94,7 +92,7 @@ class OrganizationForm(forms.ModelForm):
         self.fields["responsible_person"].label_from_instance = self._user_label
         self.fields["statuses"].queryset = OrganizationStatus.objects.filter(is_active=True).order_by("name")
 
-        self.fields["sorm_owner"].queryset = Organization.objects.order_by("name")
+        self.fields["sorm_owner"].queryset = Ori.objects.order_by("name")
         if self.instance and self.instance.pk:
             self.fields["sorm_owner"].queryset = self.fields["sorm_owner"].queryset.exclude(pk=self.instance.pk)
 
@@ -176,7 +174,7 @@ class TelecomOperatorForm(forms.ModelForm):
         user_model = get_user_model()
         users = user_model.objects.all().order_by("first_name", "last_name", "username")
         self.fields["responsible_person"].queryset = users
-        self.fields["responsible_person"].label_from_instance = OrganizationForm._user_label
+        self.fields["responsible_person"].label_from_instance = OriForm._user_label
         self.fields["statuses"].queryset = OrganizationStatus.objects.filter(is_active=True).order_by("name")
         if self.instance and self.instance.pk:
             self.fields["sites_text"].initial = "\n".join(self.instance.sites or [])
@@ -239,7 +237,7 @@ class PsiAssignmentForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         users = get_user_model().objects.all().order_by("first_name", "last_name", "username")
         self.fields["responsible"].queryset = users
-        self.fields["responsible"].label_from_instance = OrganizationForm._user_label
+        self.fields["responsible"].label_from_instance = OriForm._user_label
         self.fields["start_date"].input_formats = ["%Y-%m-%d"]
         self.fields["end_date"].input_formats = ["%Y-%m-%d"]
 

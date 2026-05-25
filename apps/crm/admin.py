@@ -1,5 +1,5 @@
 from django.contrib import admin
-from django.contrib.contenttypes.admin import GenericTabularInline
+from django.contrib.admin.sites import AdminSite
 from django.db.models import Count
 
 from apps.crm.favicon_fetch import maybe_assign_favicon_from_sites
@@ -7,11 +7,7 @@ from apps.crm.favicon_fetch import maybe_assign_favicon_from_sites
 from .models import (
     Comment,
     Contact,
-    Document,
-    DocumentLink,
-    DocumentType,
     Event,
-    EventDocumentTemplate,
     EventStatus,
     EventType,
     Industry,
@@ -20,9 +16,8 @@ from .models import (
     InteractionStatus,
     LicenseOrder,
     LicenseOrderNumber,
-    Organization,
+    Ori,
     OrganizationStatus,
-    OrganizationType,
     OrmVendor,
     Psi,
     PsiWorkflowStatus,
@@ -47,14 +42,6 @@ class EventInline(admin.TabularInline):
     model = Event
     extra = 0
     autocomplete_fields = ("contact", "initiator", "responsible", "event_type", "status")
-
-
-class OrganizationDocumentLinkInline(GenericTabularInline):
-    model = DocumentLink
-    extra = 0
-    autocomplete_fields = ("document", "created_by", "updated_by")
-    ct_field = "content_type"
-    ct_fk_field = "object_id"
 
 
 class CommentInline(admin.TabularInline):
@@ -107,30 +94,20 @@ class LicenseOrderPsiInline(admin.TabularInline):
     autocomplete_fields = ("responsible", "created_by", "updated_by")
 
 
-class LicenseOrderDocumentLinkInline(GenericTabularInline):
-    model = DocumentLink
-    extra = 0
-    autocomplete_fields = ("document", "created_by", "updated_by")
-    ct_field = "content_type"
-    ct_fk_field = "object_id"
-
-
-@admin.register(Organization)
-class OrganizationAdmin(admin.ModelAdmin):
+@admin.register(Ori)
+class OriAdmin(admin.ModelAdmin):
     list_display = (
         "name",
         "inn",
-        "organization_type",
         "statuses_display",
         "interaction_status",
         "responsible_person",
         "updated_at",
     )
-    list_filter = ("organization_type", "statuses", "interaction_status", "industry", "responsible_person")
+    list_filter = ("statuses", "interaction_status", "industry", "responsible_person")
     search_fields = ("name", "inn", "case_number", "responsible_person__username", "responsible_person__first_name", "responsible_person__last_name")
     readonly_fields = ("created_at", "updated_at")
     autocomplete_fields = (
-        "organization_type",
         "interaction_status",
         "industry",
         "orm_vendor",
@@ -139,7 +116,7 @@ class OrganizationAdmin(admin.ModelAdmin):
         "updated_by",
     )
     filter_horizontal = ("statuses",)
-    inlines = (ContactInline, InteractionObjectInline, EventInline, OrganizationDocumentLinkInline, CommentInline, PsiInline)
+    inlines = (ContactInline, InteractionObjectInline, EventInline, CommentInline, PsiInline)
 
     @admin.display(description="Статусы")
     def statuses_display(self, obj):
@@ -242,7 +219,7 @@ class LicenseOrderAdmin(admin.ModelAdmin):
         "created_by",
         "updated_by",
     )
-    inlines = (LicenseOrderPsiInline, LicenseOrderDocumentLinkInline)
+    inlines = (LicenseOrderPsiInline,)
 
     def get_queryset(self, request):
         return super().get_queryset(request).annotate(_psi_count=Count("psis"))
@@ -300,44 +277,11 @@ class EventAdmin(admin.ModelAdmin):
     )
 
 
-@admin.register(Document)
-class DocumentAdmin(admin.ModelAdmin):
-    list_display = ("document_type", "number", "start_date", "end_date", "links_count")
-    search_fields = ("number",)
-    list_filter = ("document_type",)
-    autocomplete_fields = ("document_type", "created_by", "updated_by")
-
-    def get_queryset(self, request):
-        return super().get_queryset(request).annotate(_links_count=Count("links"))
-
-    @admin.display(description="Связей")
-    def links_count(self, obj):
-        return getattr(obj, "_links_count", obj.links.count())
-
-
-@admin.register(DocumentLink)
-class DocumentLinkAdmin(admin.ModelAdmin):
-    list_display = ("document", "content_type", "object_id", "created_at")
-    list_filter = ("content_type",)
-    search_fields = ("document__number",)
-    autocomplete_fields = ("document", "created_by", "updated_by")
-
-
-@admin.register(EventDocumentTemplate)
-class EventDocumentTemplateAdmin(admin.ModelAdmin):
-    list_display = ("name", "event_type", "template_path", "is_active")
-    search_fields = ("name", "event_type__name", "template_path")
-    list_filter = ("event_type", "is_active")
-    autocomplete_fields = ("event_type", "created_by", "updated_by")
-
-
-@admin.register(OrganizationType)
 @admin.register(OrganizationStatus)
 @admin.register(InteractionStatus)
 @admin.register(InteractionObjectType)
 @admin.register(EventType)
 @admin.register(EventStatus)
-@admin.register(DocumentType)
 @admin.register(Industry)
 @admin.register(OrmVendor)
 @admin.register(LicenseOrderNumber)
@@ -370,3 +314,67 @@ class PsiAdmin(admin.ModelAdmin):
     @admin.display(description="Статус")
     def status_display(self, obj):
         return dict(PsiWorkflowStatus.choices).get(obj.status, obj.status)
+
+
+# --- Группировка моделей CRM в админке (главная и /admin/crm/) ---
+
+_CRM_TELECOM_MODELS = (
+    "TelecomOperator",
+    "TelecomOperatorLicense",
+    "LicenseOrder",
+    "LicenseOrderNumber",
+)
+_CRM_COMMON_MODELS = (
+    "OrganizationStatus",
+    "OrmVendor",
+    "Psi",
+)
+
+
+def _split_crm_admin_app(app: dict) -> list[dict]:
+    """Разбивает один блок приложения crm на «Операторы связи», «Общее» и остальные модели."""
+    models = list(app.get("models") or [])
+    by_object_name = {m["object_name"]: m for m in models}
+    used = set(_CRM_TELECOM_MODELS) | set(_CRM_COMMON_MODELS)
+    telecom = [by_object_name[name] for name in _CRM_TELECOM_MODELS if name in by_object_name]
+    common = [by_object_name[name] for name in _CRM_COMMON_MODELS if name in by_object_name]
+    other = [m for m in models if m["object_name"] not in used]
+    orig_name = app.get("name") or "CRM"
+    out: list[dict] = []
+    if telecom:
+        block = dict(app)
+        block["name"] = "Операторы связи"
+        block["models"] = telecom
+        out.append(block)
+    if common:
+        block = dict(app)
+        block["name"] = "Общее"
+        block["models"] = common
+        out.append(block)
+    if other:
+        block = dict(app)
+        block["name"] = orig_name
+        block["models"] = other
+        out.append(block)
+    return out
+
+
+_original_admin_get_app_list = AdminSite.get_app_list
+
+
+def _patched_admin_get_app_list(self, request, app_label=None):
+    app_list = _original_admin_get_app_list(self, request, app_label)
+    if app_label is not None and app_label != "crm":
+        return app_list
+    new_list: list[dict] = []
+    for app in app_list:
+        if app.get("app_label") == "crm":
+            new_list.extend(_split_crm_admin_app(app))
+        else:
+            new_list.append(app)
+    return new_list
+
+
+if not getattr(AdminSite, "_crm_admin_app_list_grouped", False):
+    AdminSite._crm_admin_app_list_grouped = True
+    AdminSite.get_app_list = _patched_admin_get_app_list
