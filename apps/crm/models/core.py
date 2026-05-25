@@ -1,6 +1,4 @@
 from django.conf import settings
-from django.contrib.contenttypes.fields import GenericForeignKey
-from django.contrib.contenttypes.models import ContentType
 from django.core.validators import MinLengthValidator, URLValidator
 from django.db import models
 from django.utils import timezone
@@ -45,14 +43,6 @@ class NamedReference(models.Model):
         return self.name
 
 
-class OrganizationType(NamedReference):
-    icon = models.ImageField(upload_to="organization_types/icons/", null=True, blank=True, verbose_name="Иконка")
-
-    class Meta(NamedReference.Meta):
-        verbose_name = "Тип организации"
-        verbose_name_plural = "Типы организаций"
-
-
 class OrganizationStatus(NamedReference):
     class Meta(NamedReference.Meta):
         verbose_name = "Статус организации"
@@ -91,12 +81,6 @@ class EventStatus(NamedReference):
         verbose_name_plural = "Статусы событий"
 
 
-class DocumentType(NamedReference):
-    class Meta(NamedReference.Meta):
-        verbose_name = "Тип документа"
-        verbose_name_plural = "Типы документов"
-
-
 class Industry(NamedReference):
     class Meta(NamedReference.Meta):
         verbose_name = "Отрасль"
@@ -109,7 +93,7 @@ class OrmVendor(NamedReference):
         verbose_name_plural = "Производители ТС ОРМ"
 
 
-class Organization(TimeAuditModel):
+class Ori(TimeAuditModel):
     icon = models.ImageField(upload_to="organizations/icons/", null=True, blank=True, verbose_name="Иконка")
     name = models.CharField(max_length=500, verbose_name="Наименование организации")
     inn = models.CharField(
@@ -117,12 +101,6 @@ class Organization(TimeAuditModel):
         db_index=True,
         validators=[MinLengthValidator(10)],
         verbose_name="ИНН",
-    )
-    organization_type = models.ForeignKey(
-        OrganizationType,
-        on_delete=models.PROTECT,
-        related_name="organizations",
-        verbose_name="Тип организации",
     )
     statuses = models.ManyToManyField(
         OrganizationStatus,
@@ -177,8 +155,8 @@ class Organization(TimeAuditModel):
     )
 
     class Meta:
-        verbose_name = "Организация"
-        verbose_name_plural = "Организации"
+        verbose_name = "ОРИ"
+        verbose_name_plural = "ОРИ"
         ordering = ("name",)
         indexes = [
             models.Index(fields=["inn"]),
@@ -194,10 +172,10 @@ class Organization(TimeAuditModel):
 
 class InteractionObject(TimeAuditModel):
     organization = models.ForeignKey(
-        Organization,
+        Ori,
         on_delete=models.CASCADE,
         related_name="interaction_objects",
-        verbose_name="Организация",
+        verbose_name="ОРИ",
     )
     start_date = models.DateField(null=True, blank=True, verbose_name="Начало действия")
     end_date = models.DateField(null=True, blank=True, verbose_name="Завершение действия")
@@ -229,10 +207,10 @@ class InteractionObject(TimeAuditModel):
 
 class Contact(TimeAuditModel):
     organization = models.ForeignKey(
-        Organization,
+        Ori,
         on_delete=models.CASCADE,
         related_name="contacts",
-        verbose_name="Организация",
+        verbose_name="ОРИ",
         null=True,
         blank=True,
     )
@@ -278,10 +256,10 @@ class Contact(TimeAuditModel):
 
 class Psi(TimeAuditModel):
     organization = models.ForeignKey(
-        Organization,
+        Ori,
         on_delete=models.CASCADE,
         related_name="psis",
-        verbose_name="Организация",
+        verbose_name="ОРИ",
         null=True,
         blank=True,
     )
@@ -349,10 +327,10 @@ class Psi(TimeAuditModel):
 
 class Comment(TimeAuditModel):
     organization = models.ForeignKey(
-        Organization,
+        Ori,
         on_delete=models.CASCADE,
         related_name="comments",
-        verbose_name="Организация",
+        verbose_name="ОРИ",
         null=True,
         blank=True,
     )
@@ -395,10 +373,10 @@ class Comment(TimeAuditModel):
 
 class Event(TimeAuditModel):
     organization = models.ForeignKey(
-        Organization,
+        Ori,
         on_delete=models.CASCADE,
         related_name="events",
-        verbose_name="Организация",
+        verbose_name="ОРИ",
     )
     contact = models.ForeignKey(
         Contact,
@@ -442,34 +420,6 @@ class Event(TimeAuditModel):
 
     def __str__(self) -> str:
         return f"{self.event_type} {self.organization.name}"
-
-
-class Document(TimeAuditModel):
-    start_date = models.DateField(null=True, blank=True, verbose_name="Начало действия")
-    end_date = models.DateField(null=True, blank=True, verbose_name="Завершение действия")
-    document_type = models.ForeignKey(
-        DocumentType,
-        on_delete=models.PROTECT,
-        related_name="documents",
-        verbose_name="Документ",
-    )
-    number = models.CharField(max_length=255, blank=True, verbose_name="Номер документа")
-    file = models.FileField(upload_to="documents/%Y/%m/%d/", null=True, blank=True, verbose_name="Файл")
-
-    class Meta:
-        verbose_name = "Документ"
-        verbose_name_plural = "Документы"
-        constraints = [
-            models.CheckConstraint(
-                condition=models.Q(end_date__isnull=True)
-                | models.Q(start_date__isnull=True)
-                | models.Q(end_date__gte=models.F("start_date")),
-                name="document_dates_valid",
-            ),
-        ]
-
-    def __str__(self) -> str:
-        return self.number or f"Документ #{self.pk}"
 
 
 class TelecomLicenseStatus(models.TextChoices):
@@ -590,40 +540,6 @@ class LicenseOrder(TimeAuditModel):
         return f"{self.order_number} — {self.license.title}"
 
 
-class DocumentLink(TimeAuditModel):
-    document = models.ForeignKey(
-        Document,
-        on_delete=models.CASCADE,
-        related_name="links",
-        verbose_name="Документ",
-    )
-    content_type = models.ForeignKey(
-        ContentType,
-        on_delete=models.CASCADE,
-        related_name="crm_document_links",
-        verbose_name="Тип сущности",
-    )
-    object_id = models.PositiveBigIntegerField(verbose_name="ID сущности")
-    content_object = GenericForeignKey("content_type", "object_id")
-
-    class Meta:
-        verbose_name = "Связь документа"
-        verbose_name_plural = "Связи документов"
-        constraints = [
-            models.UniqueConstraint(
-                fields=["document", "content_type", "object_id"],
-                name="uniq_document_link_target",
-            )
-        ]
-        indexes = [
-            models.Index(fields=["content_type", "object_id"]),
-            models.Index(fields=["document"]),
-        ]
-
-    def __str__(self) -> str:
-        return f"{self.document} -> {self.content_type}#{self.object_id}"
-
-
 class TelecomOperatorAuditEventType(models.TextChoices):
     CREATE = "create", "Создание"
     UPDATE = "update", "Изменение"
@@ -669,21 +585,3 @@ class TelecomOperatorAuditEvent(models.Model):
         return f"{self.get_event_type_display()}: {label}"
 
 
-class EventDocumentTemplate(TimeAuditModel):
-    event_type = models.ForeignKey(
-        EventType,
-        on_delete=models.CASCADE,
-        related_name="document_templates",
-        verbose_name="Тип события",
-    )
-    name = models.CharField(max_length=255, verbose_name="Наименование шаблона")
-    template_path = models.CharField(max_length=500, blank=True, verbose_name="Путь к шаблону .docx")
-    is_active = models.BooleanField(default=True, verbose_name="Активен")
-
-    class Meta:
-        verbose_name = "Шаблон документа события"
-        verbose_name_plural = "Шаблоны документов событий"
-        constraints = [models.UniqueConstraint(fields=["event_type", "name"], name="uniq_event_template_name")]
-
-    def __str__(self) -> str:
-        return self.name
