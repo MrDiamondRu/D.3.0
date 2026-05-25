@@ -1,5 +1,4 @@
 from django.conf import settings
-from django.contrib.contenttypes.models import ContentType
 from django.contrib import messages
 from django.contrib.auth.views import LoginView, LogoutView
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -10,19 +9,16 @@ from datetime import date
 from django.urls import reverse, reverse_lazy
 from django.views.generic import CreateView, DetailView, ListView, RedirectView, TemplateView, UpdateView
 
-from apps.crm.forms import OrganizationForm, TelecomOperatorForm, TelecomOperatorLicenseForm, LicenseOrderForm, PsiAssignmentForm
+from apps.crm.forms import OriForm, TelecomOperatorForm, TelecomOperatorLicenseForm, LicenseOrderForm, PsiAssignmentForm
 from apps.crm.models import (
     Contact,
-    Organization,
+    Ori,
     OrganizationStatus,
-    OrganizationType,
     Comment,
-    LicenseOrder,
     Psi,
     TelecomOperatorLicense,
     TelecomOperator,
     TelecomOperatorAuditEvent,
-    DocumentLink,
 )
 from apps.crm.rkn_licenses import RknSyncError, sync_telecom_operator_licenses_from_rkn
 
@@ -47,7 +43,7 @@ class PanelMenuMixin:
     def get_panel_menu(self):
         request = self.request
         current_path = request.path
-        organizations_url = reverse("panel:organization_list")
+        organizations_url = reverse("panel:ori_list")
         telecom_operators_url = reverse("panel:telecom_operator_list")
         org_list_path = organizations_url.rstrip("/")
         telecom_base_path = telecom_operators_url.rstrip("/")
@@ -55,49 +51,17 @@ class PanelMenuMixin:
         is_telecom_section = current_path.rstrip("/").startswith(telecom_base_path)
         is_org_section = current_path.rstrip("/").startswith(org_list_path)
         mine_param = request.GET.get("mine", "")
-        org_type_param = request.GET.get("organization_type", "").strip()
 
         org_children = []
-        # Все
-        all_active = (is_org_list and not _is_truthy_mine(mine_param) and not org_type_param) or (
-            is_org_section and not is_org_list and not is_telecom_section
+        ori_active = is_org_list and not _is_truthy_mine(mine_param)
+        org_children.append({"name": "ОРИ", "url": organizations_url, "is_active": ori_active})
+        org_children.append(
+            {
+                "name": TELECOM_OPERATOR_MENU_LABEL,
+                "url": telecom_operators_url,
+                "is_active": is_telecom_section,
+            }
         )
-        org_children.append({"name": "Все", "url": organizations_url, "is_active": all_active})
-        # По типу организации («Операторы связи» — отдельная страница, не фильтр списка организаций)
-        telecom_label_lower = TELECOM_OPERATOR_MENU_LABEL.lower()
-        type_items = []
-        telecom_from_db = False
-        for org_type in OrganizationType.objects.filter(is_active=True).order_by("name"):
-            if org_type.name.strip().lower() == telecom_label_lower:
-                telecom_from_db = True
-                type_items.append(
-                    {
-                        "name": TELECOM_OPERATOR_MENU_LABEL,
-                        "url": telecom_operators_url,
-                        "is_active": is_telecom_section,
-                    }
-                )
-                continue
-            type_url = f"{organizations_url}?organization_type={org_type.pk}"
-            type_items.append(
-                {
-                    "name": org_type.name,
-                    "url": type_url,
-                    "is_active": is_org_list
-                    and org_type_param == str(org_type.pk)
-                    and not _is_truthy_mine(mine_param),
-                }
-            )
-        if not telecom_from_db:
-            type_items.append(
-                {
-                    "name": TELECOM_OPERATOR_MENU_LABEL,
-                    "url": telecom_operators_url,
-                    "is_active": is_telecom_section,
-                }
-            )
-        type_items.sort(key=lambda x: x["name"].lower())
-        org_children.extend(type_items)
         # Мои дела
         mine_url = f"{organizations_url}?mine=1"
         org_children.append(
@@ -113,7 +77,6 @@ class PanelMenuMixin:
         statistics_url = reverse("panel:statistics")
         contacts_url = reverse("panel:contacts")
         mailings_url = reverse("panel:mailings")
-        documents_url = reverse("panel:documents")
         admin_url = reverse("admin:index")
         org_group_active = is_org_section or any(c["is_active"] for c in org_children)
         return [
@@ -128,7 +91,6 @@ class PanelMenuMixin:
             {"name": "Статистика", "url": statistics_url, "is_active": current_path.startswith(statistics_url)},
             {"name": "Контакты", "url": contacts_url, "is_active": current_path.startswith(contacts_url)},
             {"name": "Рассылки", "url": mailings_url, "is_active": current_path.startswith(mailings_url)},
-            {"name": "Документы", "url": documents_url, "is_active": current_path.startswith(documents_url)},
             {"name": "Администрирование", "url": admin_url, "is_active": current_path.startswith("/admin/")},
         ]
 
@@ -167,17 +129,14 @@ class PanelLoadingView(PanelAuthMixin, TemplateView):
     template_name = "panel/loading.html"
 
 
-class OrganizationListView(PanelAuthMixin, PanelMenuMixin, ListView):
+class OriListView(PanelAuthMixin, PanelMenuMixin, ListView):
     template_name = "panel/organization_list.html"
-    context_object_name = "organizations"
+    context_object_name = "oris"
     paginate_by = 20
 
     def get_queryset(self):
         qs = (
-            Organization.objects.select_related(
-                "organization_type",
-                "interaction_status",
-            )
+            Ori.objects.select_related("interaction_status")
             .prefetch_related(
                 "statuses",
                 Prefetch(
@@ -198,10 +157,7 @@ class OrganizationListView(PanelAuthMixin, PanelMenuMixin, ListView):
                 | Q(responsible_person__first_name__icontains=query)
                 | Q(responsible_person__last_name__icontains=query)
             )
-        organization_type_id = self.request.GET.get("organization_type", "").strip()
         status_id = self.request.GET.get("status", "").strip()
-        if organization_type_id:
-            qs = qs.filter(organization_type_id=organization_type_id)
         if status_id:
             qs = qs.filter(statuses__id=status_id)
         if _is_truthy_mine(self.request.GET.get("mine", "")):
@@ -211,10 +167,8 @@ class OrganizationListView(PanelAuthMixin, PanelMenuMixin, ListView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["search_query"] = self.request.GET.get("q", "").strip()
-        context["selected_organization_type"] = self.request.GET.get("organization_type", "").strip()
         context["selected_status"] = self.request.GET.get("status", "").strip()
         context["selected_mine"] = _is_truthy_mine(self.request.GET.get("mine", ""))
-        context["organization_types"] = OrganizationType.objects.filter(is_active=True).order_by("name")
         context["organization_statuses"] = OrganizationStatus.objects.filter(is_active=True).order_by("name")
         return context
 
@@ -281,25 +235,7 @@ class TelecomOperatorDetailView(PanelAuthMixin, PanelMenuMixin, DetailView):
             .prefetch_related("orders__order_number")
             .order_by("title", "pk")
         )
-        order_ids = [order.pk for lic in licenses for order in lic.orders.all()]
-        orders_with_active_docs = set()
-        if order_ids:
-            today = timezone.localdate()
-            order_ct = ContentType.objects.get_for_model(LicenseOrder)
-            active_doc_order_ids = (
-                DocumentLink.objects.select_related("document")
-                .filter(
-                    content_type=order_ct,
-                    object_id__in=order_ids,
-                )
-                .filter(Q(document__start_date__isnull=True) | Q(document__start_date__lte=today))
-                .filter(Q(document__end_date__isnull=True) | Q(document__end_date__gte=today))
-                .values_list("object_id", flat=True)
-                .distinct()
-            )
-            orders_with_active_docs = set(active_doc_order_ids)
         context["operator_licenses"] = licenses
-        context["orders_with_active_docs"] = orders_with_active_docs
         return context
 
     def post(self, request, *args, **kwargs):
@@ -434,19 +370,8 @@ class TelecomOperatorLicenseDetailView(PanelAuthMixin, PanelMenuMixin, DetailVie
                 )
             ).order_by("pk")
         )
-        order_ids = [order.pk for order in orders]
         order_number_ids = {order.order_number_id for order in orders if order.order_number_id}
-        docs_by_order_id = {}
         busy_ranges_by_order_number = {}
-        if order_ids:
-            order_ct = ContentType.objects.get_for_model(LicenseOrder)
-            links = (
-                DocumentLink.objects.select_related("document", "document__created_by")
-                .filter(content_type=order_ct, object_id__in=order_ids)
-                .order_by("-document__start_date", "-document__id")
-            )
-            for link in links:
-                docs_by_order_id.setdefault(link.object_id, []).append(link.document)
         if order_number_ids:
             related_psis = (
                 Psi.objects.select_related("license_order__order_number", "license_order__license__telecom_operator")
@@ -473,7 +398,6 @@ class TelecomOperatorLicenseDetailView(PanelAuthMixin, PanelMenuMixin, DetailVie
         busy_ranges_by_order = {}
         history_payload_by_order = {}
         for order in orders:
-            order.linked_documents = docs_by_order_id.get(order.pk, [])
             all_psis = list(order.psis.all())
             all_psis.sort(
                 key=lambda psi: (
@@ -657,13 +581,12 @@ class TelecomOperatorLicenseDetailView(PanelAuthMixin, PanelMenuMixin, DetailVie
         return HttpResponseRedirect(self.request.path)
 
 
-class OrganizationDetailView(PanelAuthMixin, PanelMenuMixin, DetailView):
+class OriDetailView(PanelAuthMixin, PanelMenuMixin, DetailView):
     template_name = "panel/organization_detail.html"
-    context_object_name = "organization"
+    context_object_name = "ori"
 
     def get_queryset(self):
-        return Organization.objects.select_related(
-            "organization_type",
+        return Ori.objects.select_related(
             "interaction_status",
             "industry",
             "orm_vendor",
@@ -673,33 +596,33 @@ class OrganizationDetailView(PanelAuthMixin, PanelMenuMixin, DetailView):
         ).prefetch_related("statuses")
 
 
-class OrganizationCreateView(PanelAuthMixin, PanelMenuMixin, CreateView):
+class OriCreateView(PanelAuthMixin, PanelMenuMixin, CreateView):
     template_name = "panel/organization_form.html"
-    form_class = OrganizationForm
+    form_class = OriForm
 
     def form_valid(self, form):
         form.instance.created_by = self.request.user
         form.instance.updated_by = self.request.user
         response = super().form_valid(form)
-        messages.success(self.request, "Организация успешно добавлена.")
+        messages.success(self.request, "ОРИ успешно добавлена.")
         return response
 
     def get_success_url(self):
-        return reverse_lazy("panel:organization_detail", kwargs={"pk": self.object.pk})
+        return reverse_lazy("panel:ori_detail", kwargs={"pk": self.object.pk})
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["form_title"] = "Добавление организации"
-        context["submit_label"] = "Создать организацию"
+        context["form_title"] = "Добавление ОРИ"
+        context["submit_label"] = "Создать ОРИ"
         return context
 
 
-class OrganizationUpdateView(PanelAuthMixin, PanelMenuMixin, UpdateView):
+class OriUpdateView(PanelAuthMixin, PanelMenuMixin, UpdateView):
     template_name = "panel/organization_form.html"
-    form_class = OrganizationForm
+    form_class = OriForm
 
     def get_queryset(self):
-        return Organization.objects.all()
+        return Ori.objects.all()
 
     def form_valid(self, form):
         form.instance.updated_by = self.request.user
@@ -708,7 +631,7 @@ class OrganizationUpdateView(PanelAuthMixin, PanelMenuMixin, UpdateView):
         return response
 
     def get_success_url(self):
-        return reverse("panel:organization_detail", kwargs={"pk": self.object.pk})
+        return reverse("panel:ori_detail", kwargs={"pk": self.object.pk})
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -771,10 +694,6 @@ class ContactsListView(PanelAuthMixin, PanelMenuMixin, ListView):
 
 class MailingsPlaceholderView(PanelPlaceholderView):
     page_title = "Рассылки"
-
-
-class DocumentsPlaceholderView(PanelPlaceholderView):
-    page_title = "Документы"
 
 
 # Legacy placeholder aliases for backward-compatible URLs.

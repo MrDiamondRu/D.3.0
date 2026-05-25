@@ -1,6 +1,6 @@
 {% extends "panel/base.html" %}
 
-{% block title %}Организации | {{ panel_title }}{% endblock %}
+{% block title %}ОРИ | {{ panel_title }}{% endblock %}
 
 {% block content %}
   <section class="panel-toolbar">
@@ -15,14 +15,6 @@
         class="panel-input panel-input-compact panel-search-compact"
         placeholder="Поиск..."
       >
-      <select name="organization_type" class="panel-input panel-select">
-        <option value="">Тип организации: все</option>
-        {% for organization_type in organization_types %}
-          <option value="{{ organization_type.pk }}" {% if selected_organization_type == organization_type.pk|stringformat:"s" %}selected{% endif %}>
-            {{ organization_type.name }}
-          </option>
-        {% endfor %}
-      </select>
       <select name="status" class="panel-input panel-select">
         <option value="">Статус: все</option>
         {% for status in organization_statuses %}
@@ -32,25 +24,25 @@
         {% endfor %}
       </select>
       <button class="panel-btn panel-btn-secondary" type="submit">Применить фильтры</button>
-      <a class="panel-btn panel-btn-secondary" href="{% url 'panel:organization_list' %}">Сброс</a>
+      <a class="panel-btn panel-btn-secondary" href="{% url 'panel:ori_list' %}">Сброс</a>
     </form>
-    <a class="panel-btn panel-btn-primary" href="{% url 'panel:organization_add' %}">Добавить организацию</a>
+    <a class="panel-btn panel-btn-primary" href="{% url 'panel:ori_add' %}">Добавить ОРИ</a>
   </section>
 
   <section class="panel-card">
     <div class="panel-organization-cards">
-      {% for organization in organizations %}
-        <article class="panel-organization-card" data-href="{% url 'panel:organization_detail' organization.pk %}">
-          {% include "panel/includes/card_base.html" with item=organization type_label=organization.organization_type use_org_type_icon=True fallback_icon_url="" %}
+      {% for ori in oris %}
+        <article class="panel-organization-card" data-href="{% url 'panel:ori_detail' ori.pk %}">
+          {% include "panel/includes/card_base.html" with item=ori type_label="ОРИ" use_org_type_icon=False fallback_icon_url="" %}
           <div class="panel-organization-extra">
             <div class="panel-organization-extra-row">
-              <span>Ответственное лицо: {{ organization.responsible_person|default:"—" }}</span>
+              <span>Ответственное лицо: {{ ori.responsible_person|default:"—" }}</span>
             </div>
             <div class="panel-organization-extra-row">
-              <span>Статус взаимодействия: {{ organization.interaction_status|default:"—" }}</span>
+              <span>Статус взаимодействия: {{ ori.interaction_status|default:"—" }}</span>
             </div>
             <div class="panel-organization-extra-row">
-              {% with organization.psis.all as psis %}
+              {% with ori.psis.all as psis %}
                 {% if psis %}
                   {% with psis.0 as psi %}
                     <span>Статус ПСИ: {{ psi.assigned_date|date:"d.m.Y"|default:"дата не указана" }} ({{ psi.responsible|default:"—" }}) - {{ psi.status|default:"—" }}</span>
@@ -63,7 +55,7 @@
           </div>
         </article>
       {% empty %}
-        <div class="panel-empty">Организации не найдены.</div>
+        <div class="panel-empty">ОРИ не найдены.</div>
       {% endfor %}
     </div>
   </section>
@@ -71,11 +63,11 @@
   {% if is_paginated %}
     <nav class="panel-pagination">
       {% if page_obj.has_previous %}
-        <a class="panel-btn panel-btn-secondary" href="?q={{ search_query|urlencode }}&organization_type={{ selected_organization_type }}&status={{ selected_status }}{% if selected_mine %}&mine=1{% endif %}&page={{ page_obj.previous_page_number }}">Назад</a>
+        <a class="panel-btn panel-btn-secondary" href="?q={{ search_query|urlencode }}&status={{ selected_status }}{% if selected_mine %}&mine=1{% endif %}&page={{ page_obj.previous_page_number }}">Назад</a>
       {% endif %}
       <span class="panel-pagination-info">Страница {{ page_obj.number }} из {{ page_obj.paginator.num_pages }}</span>
       {% if page_obj.has_next %}
-        <a class="panel-btn panel-btn-secondary" href="?q={{ search_query|urlencode }}&organization_type={{ selected_organization_type }}&status={{ selected_status }}{% if selected_mine %}&mine=1{% endif %}&page={{ page_obj.next_page_number }}">Вперед</a>
+        <a class="panel-btn panel-btn-secondary" href="?q={{ search_query|urlencode }}&status={{ selected_status }}{% if selected_mine %}&mine=1{% endif %}&page={{ page_obj.next_page_number }}">Вперед</a>
       {% endif %}
     </nav>
   {% endif %}

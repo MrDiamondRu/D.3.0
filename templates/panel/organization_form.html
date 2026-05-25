@@ -6,13 +6,13 @@
   <section class="panel-toolbar">
     <div class="panel-toolbar-title">
       <h1>{{ form_title }}</h1>
-      <p>Заполните основные данные организации</p>
+      <p>Заполните основные данные ОРИ</p>
     </div>
     <div class="panel-toolbar-actions">
       {% if object %}
-        <a class="panel-btn panel-btn-secondary" href="{% url 'panel:organization_detail' object.pk %}">Отмена</a>
+        <a class="panel-btn panel-btn-secondary" href="{% url 'panel:ori_detail' object.pk %}">Отмена</a>
       {% else %}
-        <a class="panel-btn panel-btn-secondary" href="{% url 'panel:organization_list' %}">Отмена</a>
+        <a class="panel-btn panel-btn-secondary" href="{% url 'panel:ori_list' %}">Отмена</a>
       {% endif %}
     </div>
   </section>

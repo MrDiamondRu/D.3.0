@@ -34,7 +34,7 @@
             {{ contact.position|default:"—" }}
             <div class="panel-contact-linked">
               {% if contact.organization %}
-                Организация: {{ contact.organization.name }}
+                ОРИ: {{ contact.organization.name }}
               {% elif contact.telecom_operator %}
                 Оператор: {{ contact.telecom_operator.name }}
               {% else %}

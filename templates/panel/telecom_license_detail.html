@@ -204,55 +204,6 @@
         </div>
       </div>
 
-      <div class="panel-license-subblock">
-        <h4 class="panel-license-subtitle">Документы</h4>
-      {% if order.linked_documents %}
-        <div class="panel-license-docs">
-          {% for doc in order.linked_documents %}
-            <article class="panel-license-doc-card">
-              <div class="panel-license-doc-grid">
-                <div class="panel-license-doc-cell">
-                  <span>Номер документа</span>
-                  <strong>{{ doc.number|default:"—" }}</strong>
-                </div>
-                <div class="panel-license-doc-cell">
-                  <span>Тип документа</span>
-                  <strong>{{ doc.document_type|default:"—" }}</strong>
-                </div>
-                <div class="panel-license-doc-cell">
-                  <span>Дата начала</span>
-                  <strong>{{ doc.start_date|date:"d.m.Y"|default:"—" }}</strong>
-                </div>
-                <div class="panel-license-doc-cell">
-                  <span>Дата завершения</span>
-                  <strong>{{ doc.end_date|date:"d.m.Y"|default:"—" }}</strong>
-                </div>
-                <div class="panel-license-doc-cell">
-                  <span>Кто добавил</span>
-                  <strong>
-                    {% if doc.created_by %}
-                      {{ doc.created_by.get_full_name|default:doc.created_by.username }}
-                    {% else %}
-                      —
-                    {% endif %}
-                  </strong>
-                </div>
-                <div class="panel-license-doc-cell">
-                  <span>Файл</span>
-                  {% if doc.file %}
-                    <a class="panel-license-file-link" href="{{ doc.file.url }}" target="_blank" rel="noopener noreferrer">📄 Открыть файл</a>
-                  {% else %}
-                    <strong>—</strong>
-                  {% endif %}
-                </div>
-              </div>
-            </article>
-          {% endfor %}
-        </div>
-      {% else %}
-        <div class="panel-empty">Связанные документы отсутствуют.</div>
-      {% endif %}
-      </div>
     </section>
   {% empty %}
     <section class="panel-card">

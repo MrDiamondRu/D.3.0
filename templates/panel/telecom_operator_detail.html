@@ -185,7 +185,7 @@
                     <span>Приказы со статусами</span>
                     <div class="panel-license-orders">
                       {% for order in license.orders.all %}
-                        <span class="panel-license-order-tag {% if order.pk in orders_with_active_docs %}panel-license-order-tag-active{% else %}panel-license-order-tag-inactive{% endif %}">
+                        <span class="panel-license-order-tag panel-license-order-tag-inactive">
                           {{ order.order_number.name }}
                         </span>
                       {% empty %}

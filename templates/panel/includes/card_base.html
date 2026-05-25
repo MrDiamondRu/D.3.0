@@ -3,8 +3,6 @@
     <div class="panel-organization-icon-wrap">
       {% if item.icon %}
         <img src="{{ item.icon.url }}" alt="{{ item.name }}" class="panel-organization-icon">
-      {% elif use_org_type_icon and item.organization_type.icon %}
-        <img src="{{ item.organization_type.icon.url }}" alt="{{ item.organization_type }}" class="panel-organization-icon">
       {% elif fallback_icon_url %}
         <img src="{{ fallback_icon_url }}" alt="" class="panel-organization-icon">
       {% else %}
