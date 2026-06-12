@@ -18,11 +18,24 @@ def read_env_file(path: Path) -> dict[str, str]:
     return env
 
 
-ENV = read_env_file(BASE_DIR / ".env")
+_settings_module = os.environ.get("DJANGO_SETTINGS_MODULE", "")
+if "prod" in _settings_module:
+    _env_paths = [BASE_DIR / "secrets" / "env.prod", BASE_DIR / ".env"]
+else:
+    _env_paths = [BASE_DIR / "secrets" / "env.dev", BASE_DIR / ".env"]
 
-SECRET_KEY = ENV.get("DJANGO_SECRET_KEY", "dev-only-insecure-key")
-DEBUG = ENV.get("DJANGO_DEBUG", "0") == "1"
-ALLOWED_HOSTS = [x.strip() for x in ENV.get("DJANGO_ALLOWED_HOSTS", "").split(",") if x.strip()]
+ENV: dict[str, str] = {}
+for _path in _env_paths:
+    ENV.update(read_env_file(_path))
+
+
+def env(key: str, default: str = "") -> str:
+    return os.environ.get(key) or ENV.get(key, default)
+
+
+SECRET_KEY = env("DJANGO_SECRET_KEY", "dev-only-insecure-key")
+DEBUG = env("DJANGO_DEBUG", "0") == "1"
+ALLOWED_HOSTS = [x.strip() for x in env("DJANGO_ALLOWED_HOSTS", "").split(",") if x.strip()]
 
 INSTALLED_APPS = [
     "django.contrib.admin",
