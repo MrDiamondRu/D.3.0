@@ -1,15 +1,15 @@
-:80 {
+{$DEPLOY_DOMAIN} {
     encode gzip
 
     handle_path /static/* {
-        root * ../staticfiles
+        root * /srv/static
         file_server
     }
 
     handle_path /media/* {
-        root * ../media
+        root * /srv/media
         file_server
     }
 
-    reverse_proxy 127.0.0.1:8001
+    reverse_proxy web:8001
 }

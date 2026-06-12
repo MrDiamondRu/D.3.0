@@ -4,33 +4,53 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: d3_0_web_prod
-    command: gunicorn config.wsgi:application --config deploy/gunicorn.conf.py
+    command: >
+      sh -c "python manage.py collectstatic --noinput &&
+             gunicorn config.wsgi:application --config deploy/gunicorn.conf.py"
     env_file:
-      - .env
+      - secrets/env.prod
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.prod
     depends_on:
-      - db
+      db:
+        condition: service_healthy
+    volumes:
+      - static_data:/app/staticfiles
+      - media_data:/app/media
 
   db:
     image: postgres:16
     container_name: d3_0_db_prod
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    env_file:
+      - secrets/env.prod
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   caddy:
     image: caddy:2
     container_name: d3_0_caddy_prod
     ports:
-      - "80:80"
+      - "${DEPLOY_PUBLIC_IP}:80:80"
+      - "${DEPLOY_PUBLIC_IP}:443:443"
+    environment:
+      DEPLOY_DOMAIN: ${DEPLOY_DOMAIN}
     volumes:
       - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - static_data:/srv/static:ro
+      - media_data:/srv/media:ro
+      - caddy_data:/data
+      - caddy_config:/config
     depends_on:
       - web
 
 volumes:
   postgres_data:
+  static_data:
+  media_data:
+  caddy_data:
+  caddy_config:

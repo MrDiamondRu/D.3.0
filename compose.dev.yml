@@ -9,7 +9,8 @@ services:
       - "8000:8000"
     volumes:
       - .:/app
+    env_file:
+      - secrets/env.dev
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.dev
-      DJANGO_DEBUG: "1"
       PYTHONUNBUFFERED: "1"
