@@ -1,14 +1,14 @@
 {% extends "panel/base.html" %}
 
-{% block title %}{{ ori.name }} | {{ panel_title }}{% endblock %}
+{% block title %}{{ data_source.name }} | {{ panel_title }}{% endblock %}
 
 {% block content %}
   <section class="panel-toolbar">
     <div class="panel-toolbar-title">
-      {% include "panel/includes/entity_page_header.html" with entity=ori entity_type_label="ОРИ" fallback_icon_url="" %}
+      {% include "panel/includes/entity_page_header.html" with entity=data_source entity_type_label="Источник данных" fallback_icon_url="" %}
     </div>
     <div class="panel-toolbar-actions">
-      <a class="panel-btn panel-btn-secondary" href="{% url 'panel:ori_list' %}">К списку</a>
+      <a class="panel-btn panel-btn-secondary" href="{% url 'panel:data_source_list' %}">К списку</a>
     </div>
   </section>
 
@@ -16,7 +16,6 @@
     <div class="panel-tabs" data-tabs>
       <div class="panel-tabs-nav" role="tablist" aria-label="Разделы информации">
         <button type="button" class="panel-tab-btn{% if active_tab == 'info' %} panel-tab-btn-active{% endif %}" role="tab" aria-selected="{% if active_tab == 'info' %}true{% else %}false{% endif %}" data-tab-target="info">Информация</button>
-        <button type="button" class="panel-tab-btn{% if active_tab == 'psi' %} panel-tab-btn-active{% endif %}" role="tab" aria-selected="{% if active_tab == 'psi' %}true{% else %}false{% endif %}" data-tab-target="psi">ПСИ</button>
         <button type="button" class="panel-tab-btn{% if active_tab == 'actions' %} panel-tab-btn-active{% endif %}" role="tab" aria-selected="{% if active_tab == 'actions' %}true{% else %}false{% endif %}" data-tab-target="actions">Действия</button>
         <button type="button" class="panel-tab-btn{% if active_tab == 'contacts' %} panel-tab-btn-active{% endif %}" role="tab" aria-selected="{% if active_tab == 'contacts' %}true{% else %}false{% endif %}" data-tab-target="contacts">Контакты</button>
         <button type="button" class="panel-tab-btn{% if active_tab == 'history' %} panel-tab-btn-active{% endif %}" role="tab" aria-selected="{% if active_tab == 'history' %}true{% else %}false{% endif %}" data-tab-target="history">История</button>
@@ -26,74 +25,33 @@
         <div class="panel-detail-grid">
           <div class="panel-detail-item">
             <span>Номер дела</span>
-            <strong>{{ ori.case_number|default:"-" }}</strong>
+            <strong>{{ data_source.case_number|default:"-" }}</strong>
           </div>
           <div class="panel-detail-item">
             <span>Ответственное лицо</span>
-            <strong>{{ ori.responsible_person|default:"-" }}</strong>
+            <strong>{{ data_source.responsible_person|default:"-" }}</strong>
           </div>
           <div class="panel-detail-item">
             <span>Отрасль</span>
-            <strong>{{ ori.industry|default:"-" }}</strong>
+            <strong>{{ data_source.industry|default:"-" }}</strong>
           </div>
           <div class="panel-detail-item">
             <span>Сайты</span>
-            {% if ori.sites %}
-              {% with ori.sites|first as main_site %}
+            {% if data_source.sites %}
+              {% with data_source.sites|first as main_site %}
                 <a class="panel-link panel-link-clean" href="{{ main_site }}" target="_blank" rel="noopener noreferrer">{{ main_site }}</a>
               {% endwith %}
             {% else %}
               <strong>-</strong>
             {% endif %}
           </div>
-          <div class="panel-detail-item">
-            <span>Номер в реестре</span>
-            <strong>{{ ori.in_registry|default:"-" }}</strong>
-          </div>
-          <div class="panel-detail-item">
-            <span>Ссылка на запись в реестре</span>
-            {% if ori.registry_record_url %}
-              <a class="panel-link panel-link-clean" href="{{ ori.registry_record_url }}" target="_blank" rel="noopener noreferrer">{{ ori.registry_record_url }}</a>
-            {% else %}
-              <strong>-</strong>
-            {% endif %}
-          </div>
           <div class="panel-detail-item panel-detail-item-full">
             <span>Адрес для корреспонденции</span>
-            <strong>{{ ori.correspondence_address|default:"-" }}</strong>
+            <strong>{{ data_source.correspondence_address|default:"-" }}</strong>
           </div>
         </div>
         <div class="panel-tab-panel-actions panel-tab-panel-actions-bottom">
-          <a class="panel-btn panel-btn-primary" href="{% url 'panel:ori_edit' ori.pk %}">Редактировать</a>
-        </div>
-      </div>
-
-      <div class="panel-tab-content{% if active_tab == 'psi' %} panel-tab-content-active{% endif %}" data-tab-panel="psi">
-        <div class="panel-detail-grid-3 panel-license-subblock-meta">
-          <div class="panel-detail-item">
-            <span>Производитель ТС ОРМ</span>
-            <strong>{{ ori.orm_vendor|default:"-" }}</strong>
-          </div>
-          {% if ori.outsourcing %}
-            <div class="panel-detail-item">
-              <span>Аутсорминг</span>
-              <strong>Да</strong>
-            </div>
-          {% else %}
-            <div class="panel-detail-item">
-              <span>Владелец СОРМ</span>
-              <strong>{{ ori.sorm_owner|default:"-" }}</strong>
-            </div>
-          {% endif %}
-        </div>
-
-        <div class="panel-license-subblock">
-          <h4 class="panel-license-subtitle">ПСИ</h4>
-          {% include "panel/includes/psi_linked_list.html" with linked_psis=linked_psis %}
-          <div class="panel-license-subblock-actions">
-            <button type="button" class="panel-btn panel-btn-secondary" data-psi-history-open>История</button>
-            <button type="button" class="panel-btn panel-btn-primary" data-psi-create-open>Назначить</button>
-          </div>
+          <a class="panel-btn panel-btn-primary" href="{% url 'panel:data_source_edit' data_source.pk %}">Редактировать</a>
         </div>
       </div>
 
@@ -102,7 +60,7 @@
       </div>
 
       <div class="panel-tab-content{% if active_tab == 'contacts' %} panel-tab-content-active{% endif %}" data-tab-panel="contacts">
-        {% include "panel/includes/entity_contacts_tab.html" with entity_contacts=entity_contacts %}
+        <div class="panel-empty">Связанные контакты пока не добавлены.</div>
       </div>
 
       <div class="panel-tab-content{% if active_tab == 'history' %} panel-tab-content-active{% endif %}" data-tab-panel="history">
@@ -114,8 +72,6 @@
   {% include "panel/includes/entity_comments_section.html" with entity_comments=entity_comments comments_enabled=True %}
 
   {% include "panel/includes/entity_detail_scripts.html" %}
-  {% include "panel/includes/entity_contact_modal.html" %}
-  {% include "panel/includes/ori_psi_modals.html" %}
   {% include "panel/includes/entity_action_modal.html" %}
   {% include "panel/includes/entity_action_template_modals.html" %}
 {% endblock %}

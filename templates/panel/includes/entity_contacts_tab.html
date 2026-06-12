@@ -1,0 +1,82 @@
+{% if entity_contacts %}
+  <section class="panel-card panel-contact-list-card">
+    <div class="panel-contact-list-head">
+      <span>Должность</span>
+      <span>Имя</span>
+      <span>Телефон</span>
+      <span>Email</span>
+      <span>Информация</span>
+      <span>Кто добавил</span>
+      <span>Дата редактирования</span>
+      <span>Действия</span>
+    </div>
+    <div class="panel-contact-list">
+      {% for contact in entity_contacts %}
+        <article class="panel-contact-item">
+          <div class="panel-contact-cell" data-label="Должность">{{ contact.position|default:"—" }}</div>
+          <div class="panel-contact-cell panel-contact-name" data-label="Имя">{{ contact.first_name|default:"—" }}</div>
+          <div class="panel-contact-cell" data-label="Телефон">
+            {% if contact.phone %}
+              <div class="panel-copy-field">
+                <span>{{ contact.phone }}</span>
+                <button type="button" class="panel-copy-btn" data-copy="{{ contact.phone }}" title="Копировать" aria-label="Копировать телефон">📋</button>
+              </div>
+            {% else %}
+              —
+            {% endif %}
+          </div>
+          <div class="panel-contact-cell" data-label="Email">
+            {% if contact.email %}
+              <div class="panel-copy-field">
+                <a href="mailto:{{ contact.email }}" class="panel-link panel-link-clean">{{ contact.email }}</a>
+                <button type="button" class="panel-copy-btn" data-copy="{{ contact.email }}" title="Копировать" aria-label="Копировать email">📋</button>
+              </div>
+            {% else %}
+              —
+            {% endif %}
+          </div>
+          <div class="panel-contact-cell" data-label="Информация">{{ contact.extra_info|default:"—" }}</div>
+          <div class="panel-contact-cell" data-label="Кто добавил">
+            {% if contact.created_by %}
+              {{ contact.created_by.get_full_name|default:contact.created_by.username }}
+            {% else %}
+              —
+            {% endif %}
+          </div>
+          <div class="panel-contact-cell" data-label="Дата редактирования">{{ contact.updated_at|date:"d.m.Y H:i" }}</div>
+          <div class="panel-contact-cell" data-label="Действия">
+            <div class="panel-contact-actions">
+              <button
+                type="button"
+                class="panel-icon-action-btn"
+                title="Редактировать"
+                aria-label="Редактировать"
+                data-contact-edit
+                data-contact-id="{{ contact.pk }}"
+                data-contact-position="{{ contact.position|default:'' }}"
+                data-contact-first-name="{{ contact.first_name|default:'' }}"
+                data-contact-phone="{{ contact.phone|default:'' }}"
+                data-contact-email="{{ contact.email|default:'' }}"
+                data-contact-extra="{{ contact.extra_info|default:'' }}"
+              >✎</button>
+              <form method="post">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="delete_contact">
+                <input type="hidden" name="contact_id" value="{{ contact.pk }}">
+                <button type="submit" class="panel-icon-action-btn panel-icon-action-btn-danger" title="Удалить" aria-label="Удалить">🗑</button>
+              </form>
+            </div>
+          </div>
+        </article>
+      {% endfor %}
+    </div>
+    <div class="panel-contact-footer-actions">
+      <button type="button" class="panel-btn panel-btn-primary" data-contact-create>Добавить</button>
+    </div>
+  </section>
+{% else %}
+  <div class="panel-empty">Связанные контакты пока не добавлены.</div>
+  <div class="panel-contact-footer-actions">
+    <button type="button" class="panel-btn panel-btn-primary" data-contact-create>Добавить</button>
+  </div>
+{% endif %}

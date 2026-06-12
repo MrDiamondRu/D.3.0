@@ -1,0 +1,28 @@
+<label
+  class="panel-form-field{% if full_width %} panel-form-field-full{% endif %}{% if field_wrap_class %} {{ field_wrap_class }}{% endif %}"
+  {% if field_wrap_id %}id="{{ field_wrap_id }}"{% endif %}
+>
+  <span class="panel-form-label">{{ field.label }}</span>
+  {% if searchable %}
+    <div class="panel-searchable-select"{% if searchable_attr %} {{ searchable_attr }}{% endif %}>
+      <input
+        type="text"
+        class="panel-input panel-searchable-select-input"
+        placeholder="{{ search_placeholder }}"
+        data-select-search-target="{{ field.id_for_label }}"
+        {% if search_input_attr %}{{ search_input_attr }}{% endif %}
+      >
+      {{ field }}
+    </div>
+  {% elif checkbox %}
+    <label class="panel-checkbox-label">{{ field }}</label>
+  {% else %}
+    {{ field }}
+  {% endif %}
+  {% if field.help_text %}
+    <span class="panel-form-help">{{ field.help_text }}</span>
+  {% endif %}
+  {% if field.errors %}
+    <span class="panel-form-error">{{ field.errors|striptags }}</span>
+  {% endif %}
+</label>

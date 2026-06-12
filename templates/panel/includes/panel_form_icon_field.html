@@ -1,0 +1,24 @@
+{% with icon_field=form.icon %}
+  <div class="panel-form-field panel-form-field-full panel-form-field-file">
+    <span class="panel-form-label">{{ icon_field.label }}</span>
+    <div class="panel-icon-field-actions">
+      <input
+        type="file"
+        name="{{ icon_field.html_name }}"
+        id="{{ icon_field.auto_id }}"
+        class="panel-icon-native-input"
+        accept="image/*"
+      >
+      <label for="{{ icon_field.auto_id }}" class="panel-btn panel-btn-secondary">Изменить</label>
+      {% if icon_field.value %}
+        <label class="panel-btn panel-btn-secondary panel-icon-clear-btn">
+          <input type="checkbox" name="{{ icon_field.html_name }}-clear" id="{{ icon_field.auto_id }}_clear">
+          Очистить
+        </label>
+      {% endif %}
+    </div>
+    {% if icon_field.errors %}
+      <span class="panel-form-error">{{ icon_field.errors|striptags }}</span>
+    {% endif %}
+  </div>
+{% endwith %}

@@ -1,0 +1,116 @@
+<script>
+  window.addEventListener("DOMContentLoaded", function () {
+    var tabs = document.querySelector("[data-tabs]");
+    if (!tabs) return;
+    var buttons = tabs.querySelectorAll("[data-tab-target]");
+    var panels = tabs.querySelectorAll("[data-tab-panel]");
+    var params = new URLSearchParams(window.location.search);
+    var initialTab = params.get("tab");
+
+    function activateTab(target) {
+      if (!target) return;
+      buttons.forEach(function (b) {
+        var active = b.getAttribute("data-tab-target") === target;
+        b.classList.toggle("panel-tab-btn-active", active);
+        b.setAttribute("aria-selected", active ? "true" : "false");
+      });
+      panels.forEach(function (panel) {
+        panel.classList.toggle(
+          "panel-tab-content-active",
+          panel.getAttribute("data-tab-panel") === target
+        );
+      });
+    }
+
+    buttons.forEach(function (button) {
+      button.addEventListener("click", function () {
+        activateTab(button.getAttribute("data-tab-target"));
+      });
+    });
+
+    if (initialTab && tabs.querySelector('[data-tab-target="' + initialTab + '"]')) {
+      activateTab(initialTab);
+      if (window.history && window.history.replaceState) {
+        window.history.replaceState({}, document.title, window.location.pathname + (window.location.hash || ""));
+      }
+    }
+
+    tabs.querySelectorAll("[data-copy]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var value = btn.getAttribute("data-copy") || "";
+        if (!value) return;
+        var copyPromise = (navigator.clipboard && navigator.clipboard.writeText)
+          ? navigator.clipboard.writeText(value)
+          : Promise.reject();
+        copyPromise.catch(function () {
+          var helper = document.createElement("textarea");
+          helper.value = value;
+          document.body.appendChild(helper);
+          helper.select();
+          document.execCommand("copy");
+          document.body.removeChild(helper);
+        }).then(function () {
+          var old = btn.textContent;
+          btn.textContent = "✓";
+          btn.disabled = true;
+          window.setTimeout(function () {
+            btn.textContent = old;
+            btn.disabled = false;
+          }, 1200);
+        });
+      });
+    });
+
+    var contactModal = document.querySelector("[data-contact-modal]");
+    var contactModalClose = document.querySelector("[data-contact-modal-close]");
+    var contactForm = document.querySelector("[data-contact-form]");
+    if (contactModal && contactForm) {
+      var idInput = contactForm.querySelector("[name='contact_id']");
+      var positionInput = contactForm.querySelector("[name='position']");
+      var firstNameInput = contactForm.querySelector("[name='first_name']");
+      var phoneInput = contactForm.querySelector("[name='phone']");
+      var emailInput = contactForm.querySelector("[name='email']");
+      var extraInput = contactForm.querySelector("[name='extra_info']");
+      var titleNode = contactModal.querySelector("[data-contact-modal-title]");
+
+      function openContactModal(isEdit, data) {
+        titleNode.textContent = isEdit ? "Редактирование контакта" : "Добавление контакта";
+        idInput.value = isEdit ? (data.id || "") : "";
+        positionInput.value = data.position || "";
+        firstNameInput.value = data.firstName || "";
+        phoneInput.value = data.phone || "";
+        emailInput.value = data.email || "";
+        extraInput.value = data.extra || "";
+        contactModal.hidden = false;
+      }
+
+      function closeContactModal() {
+        contactModal.hidden = true;
+      }
+
+      document.querySelectorAll("[data-contact-create]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          openContactModal(false, {});
+        });
+      });
+      document.querySelectorAll("[data-contact-edit]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          openContactModal(true, {
+            id: btn.getAttribute("data-contact-id") || "",
+            position: btn.getAttribute("data-contact-position") || "",
+            firstName: btn.getAttribute("data-contact-first-name") || "",
+            phone: btn.getAttribute("data-contact-phone") || "",
+            email: btn.getAttribute("data-contact-email") || "",
+            extra: btn.getAttribute("data-contact-extra") || ""
+          });
+        });
+      });
+      if (contactModalClose) {
+        contactModalClose.addEventListener("click", closeContactModal);
+      }
+      contactModal.addEventListener("click", function (e) {
+        if (e.target === contactModal) closeContactModal();
+      });
+    }
+  });
+</script>

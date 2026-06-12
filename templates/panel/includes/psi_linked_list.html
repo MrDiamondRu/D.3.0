@@ -1,0 +1,77 @@
+{% if linked_psis %}
+  <div class="panel-license-psi-list">
+    {% for psi in linked_psis %}
+      <article class="panel-license-psi-card panel-license-psi-card-{{ psi.status }}">
+        <div class="panel-license-psi-grid">
+          <div class="panel-license-psi-cell panel-license-psi-cell-status">
+            <form method="post" class="panel-psi-status-form">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="update_psi_status">
+              <input type="hidden" name="psi_id" value="{{ psi.pk }}">
+              <label class="panel-psi-status-field">
+                <span class="panel-license-psi-status-label">Статус</span>
+                <select name="status" class="panel-input panel-input-compact panel-psi-status-select" onchange="this.form.submit()">
+                  {% for value, label in psi_status_choices %}
+                    <option value="{{ value }}"{% if psi.status == value %} selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+            </form>
+          </div>
+          <div class="panel-license-psi-cell panel-license-psi-cell-date">
+            <span class="panel-license-psi-inline-label">Дата начала</span>
+            <strong>{{ psi.start_date|date:"d.m.Y"|default:"—" }}</strong>
+          </div>
+          <div class="panel-license-psi-cell panel-license-psi-cell-meta">
+            <span class="panel-license-psi-inline-label">Назначил</span>
+            <strong>
+              {% if psi.created_by %}
+                {{ psi.created_by.get_full_name|default:psi.created_by.username }}
+              {% else %}
+                —
+              {% endif %}
+            </strong>
+          </div>
+          <div class="panel-license-psi-cell panel-license-psi-cell-action">
+            <button
+              type="button"
+              class="panel-icon-action-btn"
+              title="Изменить ПСИ"
+              aria-label="Изменить ПСИ"
+              data-psi-edit-open
+              data-psi-id="{{ psi.pk }}"
+              data-psi-responsible="{{ psi.responsible_id|default:'' }}"
+              data-psi-start="{{ psi.start_date|date:'Y-m-d'|default:'' }}"
+              data-psi-end="{{ psi.end_date|date:'Y-m-d'|default:'' }}"
+            >✎</button>
+          </div>
+
+          <div class="panel-license-psi-cell panel-license-psi-cell-owner">
+            <span class="panel-license-psi-owner-prefix">Ответственный:</span>
+            <strong>{{ psi.responsible|default:"—" }}</strong>
+          </div>
+          <div class="panel-license-psi-cell panel-license-psi-cell-date">
+            <span class="panel-license-psi-inline-label">Дата окончания</span>
+            <strong>{{ psi.end_date|date:"d.m.Y"|default:"—" }}</strong>
+          </div>
+          <div class="panel-license-psi-cell panel-license-psi-cell-meta">
+            <span class="panel-license-psi-inline-label">Дата назначения</span>
+            <strong>{{ psi.created_at|date:"d.m.Y H:i"|default:"—" }}</strong>
+          </div>
+          <div class="panel-license-psi-cell panel-license-psi-cell-action">
+            <form method="post">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="delete_psi">
+              <input type="hidden" name="psi_id" value="{{ psi.pk }}">
+              <button type="submit" class="panel-icon-action-btn panel-icon-action-btn-danger" title="Удалить ПСИ" aria-label="Удалить ПСИ">🗑</button>
+            </form>
+          </div>
+        </div>
+      </article>
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="panel-empty panel-license-empty-subblock">
+    Информации о приемо-сдаточных испытаниях пока нет.
+  </div>
+{% endif %}

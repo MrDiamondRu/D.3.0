@@ -1,0 +1,16 @@
+<div class="panel-telecom-page-title">
+  {% if entity.icon %}
+    <img src="{{ entity.icon.url }}" alt="" class="panel-telecom-page-title-icon">
+  {% elif fallback_icon_url %}
+    <img src="{{ fallback_icon_url }}" alt="" class="panel-telecom-page-title-icon">
+  {% else %}
+    <div class="panel-telecom-page-title-icon panel-organization-icon panel-organization-icon-placeholder">
+      {{ entity.name|first|upper }}
+    </div>
+  {% endif %}
+  <div class="panel-telecom-page-title-text">
+    <h1>{{ entity.name }}</h1>
+    <p class="panel-organization-inn">ИНН {{ entity.inn }}</p>
+    <p>{{ entity_type_label }}</p>
+  </div>
+</div>

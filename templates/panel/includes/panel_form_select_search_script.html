@@ -1,0 +1,35 @@
+<script>
+  document.querySelectorAll("[data-select-search-target]").forEach(function (searchInput) {
+    const targetId = searchInput.getAttribute("data-select-search-target");
+    const select = document.getElementById(targetId);
+    if (!select) {
+      return;
+    }
+
+    const originalOptions = Array.from(select.options).map(function (option) {
+      return { value: option.value, text: option.text, selected: option.selected };
+    });
+
+    searchInput.addEventListener("input", function () {
+      const term = searchInput.value.trim().toLowerCase();
+      const currentValue = select.value;
+      const filtered = originalOptions.filter(function (option, index) {
+        if (index === 0) {
+          return true;
+        }
+        return option.text.toLowerCase().includes(term);
+      });
+
+      select.innerHTML = "";
+      filtered.forEach(function (option) {
+        const el = document.createElement("option");
+        el.value = option.value;
+        el.textContent = option.text;
+        if (option.value === currentValue) {
+          el.selected = true;
+        }
+        select.appendChild(el);
+      });
+    });
+  });
+</script>

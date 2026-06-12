@@ -1,0 +1,28 @@
+{% if audit_events %}
+  <div class="panel-audit-table-wrap">
+    <table class="panel-audit-table">
+      <thead>
+        <tr>
+          <th>Кто</th>
+          <th>Когда</th>
+          <th>Что сделал</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for event in audit_events %}
+          <tr>
+            <td>{{ event.user|default:"Система" }}</td>
+            <td>{{ event.created_at|date:"d.m.Y H:i" }}</td>
+            <td>
+              <span class="panel-audit-badge panel-audit-badge-{{ event.event_type }}">
+                {{ event.get_event_type_display }}
+              </span>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% else %}
+  <div class="panel-empty">История действий пока пуста.</div>
+{% endif %}

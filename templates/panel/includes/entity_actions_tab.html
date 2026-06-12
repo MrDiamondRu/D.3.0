@@ -1,0 +1,14 @@
+{% if entity_actions %}
+  <div class="panel-org-action-list">
+    {% for action in entity_actions %}
+      {% include "panel/includes/entity_action_card.html" %}
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="panel-empty">Действия пока не добавлены.</div>
+{% endif %}
+<div class="panel-license-subblock-actions">
+  <button type="button" class="panel-btn panel-btn-primary" data-entity-action-create-open>Добавить</button>
+  <button type="button" class="panel-btn panel-btn-secondary" data-action-template-list-open>Шаблоны</button>
+  <button type="button" class="panel-btn panel-btn-secondary" data-action-template-save-open>Сохранить</button>
+</div>

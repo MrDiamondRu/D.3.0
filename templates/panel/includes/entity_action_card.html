@@ -1,0 +1,53 @@
+<article class="panel-org-action-card panel-org-action-card-{{ action.status }}">
+  <div class="panel-org-action-layout">
+    <form method="post" class="panel-org-action-status-form">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="cycle_action_status">
+      <input type="hidden" name="action_id" value="{{ action.pk }}">
+      <button
+        type="submit"
+        class="panel-org-action-status-icon panel-org-action-status-icon-{{ action.status }}"
+        title="{% if action.status == 'planned' %}Запланировано{% elif action.status == 'done' %}Готово{% else %}Просрочено{% endif %} — сменить статус"
+        aria-label="{% if action.status == 'planned' %}Запланировано{% elif action.status == 'done' %}Готово{% else %}Просрочено{% endif %}, сменить статус"
+      >
+        {% if action.status == "planned" %}⏱{% elif action.status == "done" %}✓{% else %}!{% endif %}
+      </button>
+    </form>
+
+    <div class="panel-org-action-main">
+      <div class="panel-org-action-task">{{ action.task }}</div>
+      <div class="panel-org-action-deadline">
+        <span class="panel-org-action-inline-label">Срок</span>
+        <span class="panel-org-action-deadline-value">{{ action.deadline|date:"d.m.Y"|default:"—" }}</span>
+      </div>
+    </div>
+
+    <div class="panel-org-action-meta">
+      <div class="panel-org-action-comment">
+        <span class="panel-org-action-inline-label">Комментарий</span>
+        <span class="panel-org-action-meta-value">{{ action.comment|default:"—"|linebreaksbr }}</span>
+      </div>
+      <div class="panel-org-action-result">
+        <span class="panel-org-action-inline-label">Результат</span>
+        <span class="panel-org-action-meta-value">{{ action.result|default:"—"|linebreaksbr }}</span>
+      </div>
+    </div>
+
+    <div class="panel-org-action-buttons">
+      <button
+        type="button"
+        class="panel-icon-action-btn"
+        title="Редактировать"
+        aria-label="Редактировать"
+        data-entity-action-edit-open
+        data-action-id="{{ action.pk }}"
+      >✎</button>
+      <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="delete_action">
+        <input type="hidden" name="action_id" value="{{ action.pk }}">
+        <button type="submit" class="panel-icon-action-btn panel-icon-action-btn-danger" title="Удалить" aria-label="Удалить">🗑</button>
+      </form>
+    </div>
+  </div>
+</article>

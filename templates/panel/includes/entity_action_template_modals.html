@@ -1,0 +1,85 @@
+<div class="panel-modal-backdrop" data-action-template-list-modal {% if not action_template_list_modal_open %}hidden{% endif %}>
+  <div class="panel-modal-card panel-modal-card-wide" role="dialog" aria-modal="true" aria-label="Шаблоны действий">
+    <div class="panel-modal-head">
+      <h3>Шаблоны действий</h3>
+      <button type="button" class="panel-modal-close" data-action-template-list-close aria-label="Закрыть">✕</button>
+    </div>
+    <div class="panel-form">
+      {% if action_templates %}
+        <div class="panel-action-template-list">
+          {% for template in action_templates %}
+            <form method="post" class="panel-action-template-item-form">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="apply_action_template">
+              <input type="hidden" name="template_id" value="{{ template.pk }}">
+              <button type="submit" class="panel-action-template-item">
+                <span class="panel-action-template-item-name">{{ template.name }}</span>
+                <span class="panel-action-template-item-count">{{ template.items_count }} действ.</span>
+              </button>
+            </form>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="panel-empty">Шаблоны пока не сохранены.</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="panel-modal-backdrop" data-action-template-save-modal {% if not action_template_save_modal_open %}hidden{% endif %}>
+  <div class="panel-modal-card" role="dialog" aria-modal="true" aria-label="Сохранить шаблон действий">
+    <div class="panel-modal-head">
+      <h3>Сохранить шаблон</h3>
+      <button type="button" class="panel-modal-close" data-action-template-save-close aria-label="Закрыть">✕</button>
+    </div>
+    <form method="post" class="panel-form" data-action-template-save-form>
+      {% csrf_token %}
+      <input type="hidden" name="action" value="save_action_template">
+      <label class="panel-form-field panel-form-field-full">
+        <span class="panel-form-label">Название шаблона</span>
+        <input
+          type="text"
+          name="template_name"
+          class="panel-input"
+          value="{{ action_template_save_name|default:'' }}"
+          maxlength="255"
+          required
+          autocomplete="off"
+          placeholder="Например: Старт работы"
+        >
+      </label>
+      <p class="panel-form-help">В шаблон попадут задачи и комментарии всех действий текущего объекта.</p>
+      <div class="panel-form-actions">
+        <button type="submit" class="panel-btn panel-btn-primary">Сохранить шаблон</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  window.addEventListener("DOMContentLoaded", function () {
+    var listModal = document.querySelector("[data-action-template-list-modal]");
+    var listClose = document.querySelector("[data-action-template-list-close]");
+    var saveModal = document.querySelector("[data-action-template-save-modal]");
+    var saveClose = document.querySelector("[data-action-template-save-close]");
+
+    function bindModal(modal, openSelector, closeBtn) {
+      if (!modal) return;
+      document.querySelectorAll(openSelector).forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          modal.hidden = false;
+        });
+      });
+      function close() {
+        modal.hidden = true;
+      }
+      if (closeBtn) closeBtn.addEventListener("click", close);
+      modal.addEventListener("click", function (e) {
+        if (e.target === modal) close();
+      });
+    }
+
+    bindModal(listModal, "[data-action-template-list-open]", listClose);
+    bindModal(saveModal, "[data-action-template-save-open]", saveClose);
+  });
+</script>

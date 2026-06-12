@@ -6,13 +6,13 @@
   <section class="panel-toolbar">
     <div class="panel-toolbar-title">
       <h1>{{ form_title }}</h1>
-      <p>Заполните основные данные ОРИ</p>
+      <p>Заполните основные данные источника данных</p>
     </div>
     <div class="panel-toolbar-actions">
       {% if object %}
-        <a class="panel-btn panel-btn-secondary" href="{% url 'panel:ori_detail' object.pk %}">Отмена</a>
+        <a class="panel-btn panel-btn-secondary" href="{% url 'panel:data_source_detail' object.pk %}">Отмена</a>
       {% else %}
-        <a class="panel-btn panel-btn-secondary" href="{% url 'panel:ori_list' %}">Отмена</a>
+        <a class="panel-btn panel-btn-secondary" href="{% url 'panel:data_source_list' %}">Отмена</a>
       {% endif %}
     </div>
   </section>
@@ -26,7 +26,7 @@
       </div>
     {% endif %}
 
-    <form method="post" enctype="multipart/form-data" class="panel-form" id="ori-form">
+    <form method="post" enctype="multipart/form-data" class="panel-form">
       {% csrf_token %}
       {% for hidden_field in form.hidden_fields %}
         {{ hidden_field }}
@@ -45,14 +45,6 @@
 
         {% include "panel/includes/panel_form_field.html" with field=form.correspondence_address full_width=True %}
 
-        {% include "panel/includes/panel_form_field.html" with field=form.in_registry %}
-        {% include "panel/includes/panel_form_field.html" with field=form.registry_record_url %}
-
-        {% include "panel/includes/panel_form_field.html" with field=form.orm_vendor full_width=True %}
-
-        {% include "panel/includes/panel_form_field.html" with field=form.sorm_owner searchable=True search_placeholder="Поиск владельца СОРМ..." field_wrap_id="sorm-owner-field" search_input_attr='data-sorm-owner-search=""' %}
-        {% include "panel/includes/panel_form_field.html" with field=form.outsourcing checkbox=True %}
-
         {% include "panel/includes/panel_form_icon_field.html" %}
       </div>
 
@@ -63,29 +55,4 @@
   </section>
 
   {% include "panel/includes/panel_form_select_search_script.html" %}
-
-  <script>
-    (function () {
-      const outsourcingInput = document.getElementById("{{ form.outsourcing.id_for_label }}");
-      const sormOwnerSelect = document.getElementById("{{ form.sorm_owner.id_for_label }}");
-      const sormOwnerSearch = document.querySelector("[data-sorm-owner-search]");
-      if (!outsourcingInput || !sormOwnerSelect) {
-        return;
-      }
-
-      function syncSormOwnerState() {
-        const disabled = outsourcingInput.checked;
-        sormOwnerSelect.disabled = disabled;
-        if (sormOwnerSearch) {
-          sormOwnerSearch.disabled = disabled;
-        }
-        if (disabled) {
-          sormOwnerSelect.value = "";
-        }
-      }
-
-      outsourcingInput.addEventListener("change", syncSormOwnerState);
-      syncSormOwnerState();
-    })();
-  </script>
 {% endblock %}

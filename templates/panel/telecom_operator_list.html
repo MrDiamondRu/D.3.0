@@ -21,7 +21,7 @@
     <div class="panel-organization-cards">
       {% for operator in telecom_operators %}
         <article class="panel-organization-card" data-href="{% url 'panel:telecom_operator_detail' operator.pk %}">
-          {% include "panel/includes/card_base.html" with item=operator type_label="Оператор связи" use_org_type_icon=False fallback_icon_url=telecom_default_icon_url %}
+          {% include "panel/includes/card_base.html" with item=operator type_label="Оператор связи" use_org_type_icon=False fallback_icon_url="" %}
           <div class="panel-organization-extra"></div>
         </article>
       {% empty %}

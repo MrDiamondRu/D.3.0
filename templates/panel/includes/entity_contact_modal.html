@@ -1,0 +1,36 @@
+<div class="panel-modal-backdrop" data-contact-modal hidden>
+  <div class="panel-modal-card" role="dialog" aria-modal="true" aria-label="Контакт">
+    <div class="panel-modal-head">
+      <h3 data-contact-modal-title>Добавление контакта</h3>
+      <button type="button" class="panel-modal-close" data-contact-modal-close aria-label="Закрыть">✕</button>
+    </div>
+    <form method="post" class="panel-form panel-contact-modal-form" data-contact-form>
+      {% csrf_token %}
+      <input type="hidden" name="action" value="save_contact">
+      <input type="hidden" name="contact_id" value="">
+      <label class="panel-form-field">
+        <span class="panel-form-label">Должность</span>
+        <input type="text" name="position" class="panel-input">
+      </label>
+      <label class="panel-form-field">
+        <span class="panel-form-label">Имя *</span>
+        <input type="text" name="first_name" class="panel-input" required>
+      </label>
+      <label class="panel-form-field">
+        <span class="panel-form-label">Телефон</span>
+        <input type="text" name="phone" class="panel-input">
+      </label>
+      <label class="panel-form-field">
+        <span class="panel-form-label">Email</span>
+        <input type="email" name="email" class="panel-input">
+      </label>
+      <label class="panel-form-field">
+        <span class="panel-form-label">Информация</span>
+        <textarea name="extra_info" class="panel-input panel-textarea" rows="3"></textarea>
+      </label>
+      <div class="panel-form-actions">
+        <button type="submit" class="panel-btn panel-btn-primary">Сохранить</button>
+      </div>
+    </form>
+  </div>
+</div>

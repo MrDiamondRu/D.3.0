@@ -1,0 +1,281 @@
+{{ entity_actions_edit_data|json_script:"entity-actions-edit-data" }}
+{{ entity_action_busy_dates|json_script:"entity-action-busy-dates" }}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ru.js"></script>
+<div class="panel-modal-backdrop" data-entity-action-modal {% if not entity_action_modal_open %}hidden{% endif %}>
+  <div class="panel-modal-card" role="dialog" aria-modal="true" aria-label="Действие">
+    <div class="panel-modal-head">
+      <h3 data-entity-action-modal-title>
+        {% if entity_action_modal_mode == 'edit' %}Редактировать действие{% else %}Добавить действие{% endif %}
+      </h3>
+      <button type="button" class="panel-modal-close" data-entity-action-modal-close aria-label="Закрыть">✕</button>
+    </div>
+    <form method="post" class="panel-form" autocomplete="off" data-entity-action-form>
+      {% csrf_token %}
+      <input
+        type="hidden"
+        name="action"
+        value="{% if entity_action_modal_mode == 'edit' %}edit_action{% else %}create_action{% endif %}"
+        data-entity-action-action-input
+      >
+      <input
+        type="hidden"
+        name="action_id"
+        value="{% if entity_action_modal_item %}{{ entity_action_modal_item.pk }}{% endif %}"
+        data-entity-action-id-input
+      >
+      <div class="panel-form-grid">
+        <label class="panel-form-field panel-form-field-full">
+          <span class="panel-form-label">{{ entity_action_form.task.label }}</span>
+          {{ entity_action_form.task }}
+          {% if entity_action_form.task.errors %}
+            <span class="panel-form-error">{{ entity_action_form.task.errors|striptags }}</span>
+          {% endif %}
+        </label>
+        <label class="panel-form-field panel-hidden" data-entity-action-edit-only>
+          <span class="panel-form-label">Статус</span>
+          <select name="status" class="panel-input" data-entity-action-status-input>
+            {% for value, label in entity_action_status_choices %}
+              <option value="{{ value }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label class="panel-form-field panel-hidden" data-entity-action-native-deadline-field>
+          <span class="panel-form-label">{{ entity_action_form.deadline.label }}</span>
+          {{ entity_action_form.deadline }}
+          {% if entity_action_form.deadline.errors %}
+            <span class="panel-form-error">{{ entity_action_form.deadline.errors|striptags }}</span>
+          {% endif %}
+        </label>
+        <label class="panel-form-field panel-form-field-full" data-entity-action-deadline-field>
+          <span class="panel-form-label">{{ entity_action_form.deadline.label }}</span>
+          <div class="panel-form-deadline-row">
+            <input
+              type="text"
+              class="panel-input"
+              data-entity-action-deadline-picker
+              placeholder="Выберите дату"
+              autocomplete="off"
+            >
+            <span class="panel-form-help panel-form-help-inline">Дни с другими действиями подсвечены цветом.</span>
+          </div>
+        </label>
+        <label class="panel-form-field panel-form-field-full">
+          <span class="panel-form-label">{{ entity_action_form.comment.label }}</span>
+          {{ entity_action_form.comment }}
+          {% if entity_action_form.comment.errors %}
+            <span class="panel-form-error">{{ entity_action_form.comment.errors|striptags }}</span>
+          {% endif %}
+        </label>
+        <label class="panel-form-field panel-form-field-full panel-hidden" data-entity-action-edit-only>
+          <span class="panel-form-label">Результат</span>
+          <textarea name="result" class="panel-input panel-textarea" rows="3" data-entity-action-result-input></textarea>
+        </label>
+      </div>
+      <div class="panel-form-actions">
+        <button type="submit" class="panel-btn panel-btn-primary" data-entity-action-submit-btn>
+          {% if entity_action_modal_mode == 'edit' %}Сохранить{% else %}Добавить{% endif %}
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  window.addEventListener("DOMContentLoaded", function () {
+    var modal = document.querySelector("[data-entity-action-modal]");
+    var modalClose = document.querySelector("[data-entity-action-modal-close]");
+    var form = document.querySelector("[data-entity-action-form]");
+    var titleNode = document.querySelector("[data-entity-action-modal-title]");
+    var submitBtn = document.querySelector("[data-entity-action-submit-btn]");
+    var actionInput = document.querySelector("[data-entity-action-action-input]");
+    var idInput = document.querySelector("[data-entity-action-id-input]");
+    var deadlinePickerInput = document.querySelector("[data-entity-action-deadline-picker]");
+    var nativeDeadlineField = document.querySelector("[data-entity-action-native-deadline-field]");
+    if (!modal || !form) return;
+
+    var taskInput = form.querySelector('[name="task"]');
+    var statusInput = form.querySelector("[data-entity-action-status-input]");
+    var commentInput = form.querySelector('[name="comment"]');
+    var deadlineInput = form.querySelector('[name="deadline"]');
+    var resultInput = form.querySelector("[data-entity-action-result-input]");
+    var editOnlyFields = form.querySelectorAll("[data-entity-action-edit-only]");
+    var editDataNode = document.getElementById("entity-actions-edit-data");
+    var busyDatesNode = document.getElementById("entity-action-busy-dates");
+    var todayIso = "{{ entity_action_today|date:'Y-m-d' }}";
+    var editData = {};
+    var busyDates = [];
+    var deadlinePicker = null;
+
+    if (editDataNode) {
+      try {
+        editData = JSON.parse(editDataNode.textContent || "{}");
+      } catch (e) {
+        editData = {};
+      }
+    }
+    if (busyDatesNode) {
+      try {
+        busyDates = JSON.parse(busyDatesNode.textContent || "[]");
+      } catch (e) {
+        busyDates = [];
+      }
+    }
+
+    function toIsoDate(dateObj) {
+      var y = dateObj.getFullYear();
+      var m = String(dateObj.getMonth() + 1).padStart(2, "0");
+      var d = String(dateObj.getDate()).padStart(2, "0");
+      return y + "-" + m + "-" + d;
+    }
+
+    function toDateObject(value) {
+      if (!value) return null;
+      var parts = value.split("-");
+      if (parts.length !== 3) return null;
+      var dt = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+      return Number.isNaN(dt.getTime()) ? null : dt;
+    }
+
+    function paintBusyDates(fpInstance) {
+      if (!fpInstance || !fpInstance.calendarContainer) return;
+      fpInstance.calendarContainer.querySelectorAll(".flatpickr-day").forEach(function (day) {
+        day.classList.remove("panel-flatpickr-busy");
+        day.removeAttribute("title");
+        if (!day.dateObj) return;
+        var dayIso = toIsoDate(day.dateObj);
+        var labels = busyDates
+          .filter(function (item) {
+            return item.date === dayIso;
+          })
+          .map(function (item) {
+            return item.task || "Действие";
+          });
+        if (labels.length) {
+          day.classList.add("panel-flatpickr-busy");
+          day.setAttribute("title", "Действия: " + Array.from(new Set(labels)).join(", "));
+        }
+      });
+    }
+
+    function initDeadlineCalendar() {
+      if (!window.flatpickr || !deadlinePickerInput || !deadlineInput) return;
+      if (window.flatpickr.l10ns && window.flatpickr.l10ns.ru) {
+        window.flatpickr.localize(window.flatpickr.l10ns.ru);
+      }
+      if (nativeDeadlineField) {
+        nativeDeadlineField.classList.add("panel-hidden");
+      }
+      var defaultDate = deadlineInput.value || null;
+      deadlinePicker = window.flatpickr(deadlinePickerInput, {
+        dateFormat: "Y-m-d",
+        altInput: true,
+        altFormat: "d.m.Y",
+        defaultDate: defaultDate,
+        onChange: function (selectedDates) {
+          deadlineInput.value = selectedDates.length ? toIsoDate(selectedDates[0]) : "";
+          paintBusyDates(deadlinePicker);
+        },
+        onReady: function () {
+          paintBusyDates(deadlinePicker);
+        },
+        onMonthChange: function () {
+          paintBusyDates(deadlinePicker);
+        },
+        onYearChange: function () {
+          paintBusyDates(deadlinePicker);
+        },
+        onOpen: function () {
+          paintBusyDates(deadlinePicker);
+        }
+      });
+    }
+
+    function setDeadlineValue(value) {
+      var dateValue = value || "";
+      if (deadlineInput) deadlineInput.value = dateValue;
+      if (deadlinePicker) {
+        deadlinePicker.setDate(dateValue || null, true);
+        paintBusyDates(deadlinePicker);
+      }
+    }
+
+    function openModal(payload) {
+      payload = payload || {};
+      var isEdit = payload.mode === "edit";
+      if (titleNode) {
+        titleNode.textContent = isEdit ? "Редактировать действие" : "Добавить действие";
+      }
+      if (submitBtn) {
+        submitBtn.textContent = isEdit ? "Сохранить" : "Добавить";
+      }
+      if (actionInput) {
+        actionInput.value = isEdit ? "edit_action" : "create_action";
+      }
+      if (idInput) {
+        idInput.value = payload.actionId || "";
+      }
+      editOnlyFields.forEach(function (field) {
+        field.classList.toggle("panel-hidden", !isEdit);
+      });
+      if (taskInput) taskInput.value = payload.task || "";
+      if (statusInput) statusInput.value = payload.status || "planned";
+      if (commentInput) commentInput.value = payload.comment || "";
+      if (resultInput) resultInput.value = isEdit ? (payload.result || "") : "";
+      setDeadlineValue(payload.deadline || (isEdit ? "" : todayIso));
+      modal.hidden = false;
+    }
+
+    function closeModal() {
+      modal.hidden = true;
+    }
+
+    document.querySelectorAll("[data-entity-action-create-open]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        openModal({ mode: "create" });
+      });
+    });
+
+    document.querySelectorAll("[data-entity-action-edit-open]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var actionId = btn.getAttribute("data-action-id") || "";
+        var item = editData[actionId] || {};
+        openModal({
+          mode: "edit",
+          actionId: actionId,
+          task: item.task || "",
+          status: item.status || "planned",
+          comment: item.comment || "",
+          deadline: item.deadline || "",
+          result: item.result || ""
+        });
+      });
+    });
+
+    if (modalClose) modalClose.addEventListener("click", closeModal);
+    modal.addEventListener("click", function (e) {
+      if (e.target === modal) closeModal();
+    });
+
+    form.addEventListener("submit", function () {
+      if (deadlinePicker && deadlinePicker.selectedDates && deadlinePicker.selectedDates.length) {
+        deadlineInput.value = toIsoDate(deadlinePicker.selectedDates[0]);
+      }
+    });
+
+    initDeadlineCalendar();
+
+    {% if entity_action_modal_open %}
+      openModal({
+        mode: "{{ entity_action_modal_mode|default:'create' }}",
+        actionId: "{% if entity_action_modal_item %}{{ entity_action_modal_item.pk }}{% endif %}",
+        task: "{{ entity_action_form.task.value|default:''|escapejs }}",
+        status: "{% if entity_action_modal_mode == 'edit' %}{{ entity_action_form.status.value|default:'planned'|escapejs }}{% else %}planned{% endif %}",
+        comment: "{{ entity_action_form.comment.value|default:''|escapejs }}",
+        deadline: "{{ entity_action_form.deadline.value|default:''|escapejs }}",
+        result: "{% if entity_action_modal_mode == 'edit' %}{{ entity_action_form.result.value|default:''|escapejs }}{% endif %}"
+      });
+    {% endif %}
+  });
+</script>

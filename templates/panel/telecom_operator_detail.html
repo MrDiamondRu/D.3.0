@@ -5,38 +5,18 @@
 {% block content %}
   <section class="panel-toolbar">
     <div class="panel-toolbar-title">
-      <div class="panel-telecom-page-title">
-        {% if telecom_operator.icon %}
-          <img src="{{ telecom_operator.icon.url }}" alt="" class="panel-telecom-page-title-icon">
-        {% else %}
-          <img src="{{ telecom_default_icon_url }}" alt="" class="panel-telecom-page-title-icon">
-        {% endif %}
-        <div class="panel-telecom-page-title-text">
-          <h1>{{ telecom_operator.name }}</h1>
-          <p class="panel-organization-inn">ИНН {{ telecom_operator.inn }}</p>
-          <p>Оператор связи</p>
-        </div>
-      </div>
+      {% include "panel/includes/entity_page_header.html" with entity=telecom_operator entity_type_label="Оператор связи" fallback_icon_url="" %}
     </div>
     <div class="panel-toolbar-actions">
       <a class="panel-btn panel-btn-secondary" href="{% url 'panel:telecom_operator_list' %}">К списку</a>
     </div>
   </section>
 
-  {% with telecom_operator.statuses.all as statuses %}
-    {% if statuses %}
-      <div class="panel-status-tags panel-status-tags-detail">
-        {% for status in statuses %}
-          <span class="panel-status-tag">{{ status.name }}</span>
-        {% endfor %}
-      </div>
-    {% endif %}
-  {% endwith %}
-
   <section class="panel-card">
     <div class="panel-tabs" data-tabs>
       <div class="panel-tabs-nav" role="tablist" aria-label="Разделы информации">
         <button type="button" class="panel-tab-btn{% if active_tab == 'info' %} panel-tab-btn-active{% endif %}" role="tab" aria-selected="{% if active_tab == 'info' %}true{% else %}false{% endif %}" data-tab-target="info">Информация</button>
+        <button type="button" class="panel-tab-btn{% if active_tab == 'actions' %} panel-tab-btn-active{% endif %}" role="tab" aria-selected="{% if active_tab == 'actions' %}true{% else %}false{% endif %}" data-tab-target="actions">Действия</button>
         <button type="button" class="panel-tab-btn{% if active_tab == 'contacts' %} panel-tab-btn-active{% endif %}" role="tab" aria-selected="{% if active_tab == 'contacts' %}true{% else %}false{% endif %}" data-tab-target="contacts">Контакты</button>
         <button type="button" class="panel-tab-btn{% if active_tab == 'licenses' %} panel-tab-btn-active{% endif %}" role="tab" aria-selected="{% if active_tab == 'licenses' %}true{% else %}false{% endif %}" data-tab-target="licenses">Лицензии</button>
         <button type="button" class="panel-tab-btn{% if active_tab == 'history' %} panel-tab-btn-active{% endif %}" role="tab" aria-selected="{% if active_tab == 'history' %}true{% else %}false{% endif %}" data-tab-target="history">История</button>
@@ -80,6 +60,10 @@
             Редактировать
           </a>
         </div>
+      </div>
+
+      <div class="panel-tab-content{% if active_tab == 'actions' %} panel-tab-content-active{% endif %}" data-tab-panel="actions">
+        {% include "panel/includes/entity_actions_tab.html" %}
       </div>
 
       <div class="panel-tab-content{% if active_tab == 'contacts' %} panel-tab-content-active{% endif %}" data-tab-panel="contacts">
@@ -460,6 +444,8 @@
       </form>
     </div>
   </div>
+  {% include "panel/includes/entity_action_modal.html" %}
+  {% include "panel/includes/entity_action_template_modals.html" %}
   <div class="panel-modal-backdrop" data-rkn-error-modal {% if not rkn_unavailable %}hidden{% endif %}>
     <div class="panel-modal-card panel-modal-card-rkn" role="dialog" aria-modal="true" aria-label="Ошибка обновления из РКН">
       <div class="panel-modal-head">
