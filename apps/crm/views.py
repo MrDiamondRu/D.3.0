@@ -506,8 +506,8 @@ class OriListView(PanelAuthMixin, PanelMenuMixin, ListView):
             Ori.objects.select_related("responsible_person")
             .prefetch_related(
                 Prefetch(
-                    "psis",
-                    queryset=Psi.objects.select_related("responsible").order_by("-assigned_date", "-pk"),
+                    "org_actions",
+                    queryset=OrgAction.objects.order_by("deadline", "pk"),
                 ),
             )
             .all()
@@ -531,6 +531,8 @@ class OriListView(PanelAuthMixin, PanelMenuMixin, ListView):
         context = super().get_context_data(**kwargs)
         context["search_query"] = self.request.GET.get("q", "").strip()
         context["selected_mine"] = _is_truthy_mine(self.request.GET.get("mine", ""))
+        for ori in context.get("oris", []):
+            _sync_org_actions_overdue(list(ori.org_actions.all()))
         return context
 
 

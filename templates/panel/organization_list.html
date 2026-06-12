@@ -25,26 +25,12 @@
     <div class="panel-organization-cards">
       {% for ori in oris %}
         <article class="panel-organization-card" data-href="{% url 'panel:ori_detail' ori.pk %}">
-          {% include "panel/includes/card_base.html" with item=ori type_label="ОРИ" use_org_type_icon=False fallback_icon_url="" %}
-          <div class="panel-organization-extra">
-            <div class="panel-organization-extra-row">
-              <span>Ответственное лицо: {{ ori.responsible_person|default:"—" }}</span>
+          {% include "panel/includes/card_base.html" with item=ori use_org_type_icon=False fallback_icon_url="" show_ori_meta=True %}
+          {% if ori.org_actions.all %}
+            <div class="panel-organization-extra panel-organization-extra-progress">
+              {% include "panel/includes/entity_action_progress.html" with actions=ori.org_actions.all %}
             </div>
-            <div class="panel-organization-extra-row">
-              <span>Аутсорминг: {% if ori.outsourcing %}да{% else %}нет{% endif %}</span>
-            </div>
-            <div class="panel-organization-extra-row">
-              {% with ori.psis.all as psis %}
-                {% if psis %}
-                  {% with psis.0 as psi %}
-                    <span>Статус ПСИ: {{ psi.assigned_date|date:"d.m.Y"|default:"дата не указана" }} ({{ psi.responsible|default:"—" }}) - {{ psi.status|default:"—" }}</span>
-                  {% endwith %}
-                {% else %}
-                  <span>Статус ПСИ: не назначены</span>
-                {% endif %}
-              {% endwith %}
-            </div>
-          </div>
+          {% endif %}
         </article>
       {% empty %}
         <div class="panel-empty">ОРИ не найдены.</div>

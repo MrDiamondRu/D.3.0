@@ -17,7 +17,22 @@
     </div>
   </div>
   <div class="panel-organization-main-bottom">
-    <p class="panel-organization-type">{{ type_label }}</p>
-    <p class="panel-organization-case">Дело № {{ item.case_number|default:"-" }}</p>
+    {% if show_ori_meta %}
+      <p class="panel-organization-meta panel-organization-meta-inline">
+        <span>Дело № {{ item.case_number|default:"—" }}</span>
+        <span class="panel-organization-meta-sep" aria-hidden="true">·</span>
+        <span>
+          Ответственный:
+          {% if item.responsible_person %}
+            {{ item.responsible_person.get_full_name|default:item.responsible_person.username }}
+          {% else %}
+            —
+          {% endif %}
+        </span>
+      </p>
+    {% else %}
+      <p class="panel-organization-type">{{ type_label }}</p>
+      <p class="panel-organization-case">Дело № {{ item.case_number|default:"-" }}</p>
+    {% endif %}
   </div>
 </div>

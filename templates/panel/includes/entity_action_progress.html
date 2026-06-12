@@ -1,0 +1,30 @@
+{% load crm_panel %}
+{% org_action_donut actions as donut %}
+{% if donut.total %}
+  <div
+    class="panel-action-donut"
+    role="img"
+    aria-label="Действия: {{ donut.done }} из {{ donut.total }} готово, {{ donut.planned }} запланировано, {{ donut.overdue }} просрочено"
+  >
+    <svg class="panel-action-donut-svg" viewBox="0 0 42 42" aria-hidden="true">
+      <circle
+        class="panel-action-donut-track"
+        cx="21"
+        cy="21"
+        r="15.91549430918954"
+      ></circle>
+      {% for segment in donut.segments %}
+        <path
+          class="panel-action-donut-segment panel-action-donut-segment-{{ segment.status }}"
+          d="{{ segment.path }}"
+          stroke="{{ segment.color }}"
+        >
+          <title>{{ segment.task }}{% if segment.deadline %} · {{ segment.deadline|date:"d.m.Y" }}{% endif %}</title>
+        </path>
+      {% endfor %}
+    </svg>
+    <div class="panel-action-donut-center" aria-hidden="true">
+      <span class="panel-action-donut-value">{{ donut.done }}/{{ donut.total }}</span>
+    </div>
+  </div>
+{% endif %}
