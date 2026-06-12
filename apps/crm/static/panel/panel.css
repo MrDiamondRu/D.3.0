@@ -57,8 +57,31 @@ body {
 }
 
 .panel-header-title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+
+.panel-header-product {
   font-size: 20px;
   font-weight: 600;
+  flex-shrink: 0;
+}
+
+.panel-header-section {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--panel-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.panel-header-section::before {
+  content: "·";
+  margin-right: 10px;
+  color: #4a5568;
 }
 
 .panel-sidebar-mobile-toggle {
@@ -747,7 +770,7 @@ body {
   grid-template-columns: minmax(0, 1fr) auto;
 }
 
-.panel-organization-card:not(:has(.panel-organization-extra-progress)) {
+.panel-organization-card:not(:has(.panel-organization-extra)) {
   grid-template-columns: minmax(0, 1fr);
 }
 

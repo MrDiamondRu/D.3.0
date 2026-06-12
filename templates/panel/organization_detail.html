@@ -5,7 +5,7 @@
 {% block content %}
   <section class="panel-toolbar">
     <div class="panel-toolbar-title">
-      {% include "panel/includes/entity_page_header.html" with entity=ori entity_type_label="ОРИ" fallback_icon_url="" %}
+      {% include "panel/includes/entity_page_header.html" with entity=ori fallback_icon_url="" %}
     </div>
     <div class="panel-toolbar-actions">
       <a class="panel-btn panel-btn-secondary" href="{% url 'panel:ori_list' %}">К списку</a>

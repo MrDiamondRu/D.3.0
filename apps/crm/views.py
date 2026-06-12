@@ -47,6 +47,77 @@ from apps.crm.rkn_licenses import RknSyncError, sync_telecom_operator_licenses_f
 TELECOM_OPERATOR_MENU_LABEL = "Операторы связи"
 
 
+def _panel_nav_state(request) -> dict:
+    current_path = request.path.rstrip("/")
+    ori_url = reverse("panel:ori_list")
+    data_sources_url = reverse("panel:data_source_list")
+    telecom_operators_url = reverse("panel:telecom_operator_list")
+    telecom_licenses_prefix = reverse("panel:telecom_license_detail", kwargs={"pk": 1}).rsplit("/", 2)[0]
+    implementation_url = reverse("panel:implementation")
+    calendar_url = reverse("panel:calendar")
+    statistics_url = reverse("panel:statistics")
+    contacts_url = reverse("panel:contacts")
+    mailings_url = reverse("panel:mailings")
+
+    ori_base = ori_url.rstrip("/")
+    data_sources_base = data_sources_url.rstrip("/")
+    telecom_base = telecom_operators_url.rstrip("/")
+    mine_param = request.GET.get("mine", "")
+
+    is_ori_list = current_path == ori_base
+    is_ori_section = current_path == ori_base or current_path.startswith(f"{ori_base}/")
+    is_data_sources_section = (
+        current_path == data_sources_base or current_path.startswith(f"{data_sources_base}/")
+    )
+    is_telecom_section = (
+        current_path == telecom_base
+        or current_path.startswith(f"{telecom_base}/")
+        or current_path.startswith(telecom_licenses_prefix)
+    )
+
+    return {
+        "current_path": current_path,
+        "mine_param": mine_param,
+        "is_ori_list": is_ori_list,
+        "is_ori_section": is_ori_section,
+        "is_data_sources_section": is_data_sources_section,
+        "is_telecom_section": is_telecom_section,
+        "ori_url": ori_url,
+        "data_sources_url": data_sources_url,
+        "telecom_operators_url": telecom_operators_url,
+        "implementation_url": implementation_url,
+        "calendar_url": calendar_url,
+        "statistics_url": statistics_url,
+        "contacts_url": contacts_url,
+        "mailings_url": mailings_url,
+    }
+
+
+def _panel_section_title(nav: dict) -> str:
+    if nav["is_telecom_section"]:
+        return TELECOM_OPERATOR_MENU_LABEL
+    if nav["is_data_sources_section"]:
+        return "Источники данных"
+    if nav["is_ori_list"] and _is_truthy_mine(nav["mine_param"]):
+        return "Мои дела"
+    if nav["is_ori_section"]:
+        return "ОРИ"
+    current_path = nav["current_path"]
+    if current_path.startswith(nav["implementation_url"].rstrip("/")):
+        return "Внедрение"
+    if current_path.startswith(nav["calendar_url"].rstrip("/")):
+        return "Календарь"
+    if current_path.startswith(nav["statistics_url"].rstrip("/")):
+        return "Статистика"
+    if current_path.startswith(nav["contacts_url"].rstrip("/")):
+        return "Контакты"
+    if current_path.startswith(nav["mailings_url"].rstrip("/")):
+        return "Рассылки"
+    if current_path.startswith("/admin"):
+        return "Администрирование"
+    return ""
+
+
 def _is_truthy_mine(value) -> bool:
     if value is None:
         return False
@@ -57,78 +128,77 @@ class PanelMenuMixin:
     panel_title = "D.3.0"
 
     def get_panel_menu(self):
-        request = self.request
-        current_path = request.path.rstrip("/")
-        ori_url = reverse("panel:ori_list")
-        data_sources_url = reverse("panel:data_source_list")
-        telecom_operators_url = reverse("panel:telecom_operator_list")
-        telecom_licenses_prefix = reverse("panel:telecom_license_detail", kwargs={"pk": 1}).rsplit("/", 2)[0]
-
-        ori_base = ori_url.rstrip("/")
-        data_sources_base = data_sources_url.rstrip("/")
-        telecom_base = telecom_operators_url.rstrip("/")
-        mine_param = request.GET.get("mine", "")
-
-        is_ori_list = current_path == ori_base
-        is_ori_section = current_path == ori_base or current_path.startswith(f"{ori_base}/")
-        is_data_sources_section = (
-            current_path == data_sources_base or current_path.startswith(f"{data_sources_base}/")
-        )
-        is_telecom_section = (
-            current_path == telecom_base
-            or current_path.startswith(f"{telecom_base}/")
-            or current_path.startswith(telecom_licenses_prefix)
-        )
-
+        nav = _panel_nav_state(self.request)
+        current_path = nav["current_path"]
+        mine_param = nav["mine_param"]
         org_children = [
             {
                 "name": TELECOM_OPERATOR_MENU_LABEL,
-                "url": telecom_operators_url,
-                "is_active": is_telecom_section,
+                "url": nav["telecom_operators_url"],
+                "is_active": nav["is_telecom_section"],
             },
             {
                 "name": "ОРИ",
-                "url": ori_url,
-                "is_active": is_ori_list and not _is_truthy_mine(mine_param),
+                "url": nav["ori_url"],
+                "is_active": nav["is_ori_list"] and not _is_truthy_mine(mine_param),
             },
             {
                 "name": "Источники данных",
-                "url": data_sources_url,
-                "is_active": is_data_sources_section,
+                "url": nav["data_sources_url"],
+                "is_active": nav["is_data_sources_section"],
             },
             {
                 "name": "Мои дела",
-                "url": f"{ori_url}?mine=1",
-                "is_active": is_ori_list and _is_truthy_mine(mine_param),
+                "url": f"{nav['ori_url']}?mine=1",
+                "is_active": nav["is_ori_list"] and _is_truthy_mine(mine_param),
             },
         ]
 
-        implementation_url = reverse("panel:implementation")
-        calendar_url = reverse("panel:calendar")
-        statistics_url = reverse("panel:statistics")
-        contacts_url = reverse("panel:contacts")
-        mailings_url = reverse("panel:mailings")
         admin_url = reverse("admin:index")
-        org_group_active = is_ori_section or is_data_sources_section or is_telecom_section
+        org_group_active = (
+            nav["is_ori_section"] or nav["is_data_sources_section"] or nav["is_telecom_section"]
+        )
         return [
             {
                 "name": "Организации",
-                "url": ori_url,
+                "url": nav["ori_url"],
                 "is_active": org_group_active,
                 "children": org_children,
             },
-            {"name": "Внедрение", "url": implementation_url, "is_active": current_path.startswith(implementation_url)},
-            {"name": "Календарь", "url": calendar_url, "is_active": current_path.startswith(calendar_url)},
-            {"name": "Статистика", "url": statistics_url, "is_active": current_path.startswith(statistics_url)},
-            {"name": "Контакты", "url": contacts_url, "is_active": current_path.startswith(contacts_url)},
-            {"name": "Рассылки", "url": mailings_url, "is_active": current_path.startswith(mailings_url)},
+            {
+                "name": "Внедрение",
+                "url": nav["implementation_url"],
+                "is_active": current_path.startswith(nav["implementation_url"].rstrip("/")),
+            },
+            {
+                "name": "Календарь",
+                "url": nav["calendar_url"],
+                "is_active": current_path.startswith(nav["calendar_url"].rstrip("/")),
+            },
+            {
+                "name": "Статистика",
+                "url": nav["statistics_url"],
+                "is_active": current_path.startswith(nav["statistics_url"].rstrip("/")),
+            },
+            {
+                "name": "Контакты",
+                "url": nav["contacts_url"],
+                "is_active": current_path.startswith(nav["contacts_url"].rstrip("/")),
+            },
+            {
+                "name": "Рассылки",
+                "url": nav["mailings_url"],
+                "is_active": current_path.startswith(nav["mailings_url"].rstrip("/")),
+            },
             {"name": "Администрирование", "url": admin_url, "is_active": current_path.startswith("/admin/")},
         ]
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        nav = _panel_nav_state(self.request)
         context["panel_menu"] = self.get_panel_menu()
         context["panel_title"] = self.panel_title
+        context["panel_section_title"] = _panel_section_title(nav)
         return context
 
 

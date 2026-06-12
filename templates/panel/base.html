@@ -13,7 +13,12 @@
     <header class="panel-header">
       <div class="panel-header-left">
         <button type="button" class="panel-sidebar-mobile-toggle" id="panel-sidebar-mobile-toggle" aria-controls="panel-sidebar" aria-expanded="false" aria-label="Открыть меню"></button>
-        <div class="panel-header-title">{{ panel_title }}</div>
+        <div class="panel-header-title">
+          <span class="panel-header-product">{{ panel_title }}</span>
+          {% if panel_section_title %}
+            <span class="panel-header-section">{{ panel_section_title }}</span>
+          {% endif %}
+        </div>
       </div>
       <div class="panel-user-wrap">
         <div class="panel-user">

@@ -5,7 +5,7 @@
 {% block content %}
   <section class="panel-toolbar">
     <div class="panel-toolbar-title">
-      {% include "panel/includes/entity_page_header.html" with entity=telecom_operator entity_type_label="Оператор связи" fallback_icon_url="" %}
+      {% include "panel/includes/entity_page_header.html" with entity=telecom_operator fallback_icon_url="" %}
     </div>
     <div class="panel-toolbar-actions">
       <a class="panel-btn panel-btn-secondary" href="{% url 'panel:telecom_operator_list' %}">К списку</a>
