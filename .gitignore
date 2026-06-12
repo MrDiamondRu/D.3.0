@@ -1,3 +1,11 @@
 template/
 __pycache__/
 media/
+db.sqlite3
+.env
+
+secrets/env.dev
+secrets/env.prod
+secrets/deploy.env
+secrets/id_ed25519_deploy
+secrets/dev_dump.json
