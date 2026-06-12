@@ -5,19 +5,20 @@ from django.db.models import Count
 from apps.crm.favicon_fetch import maybe_assign_favicon_from_sites
 
 from .models import (
+    ActionTemplate,
     Comment,
     Contact,
     Event,
     EventStatus,
     EventType,
     Industry,
-    InteractionObject,
     InteractionObjectType,
-    InteractionStatus,
     LicenseOrder,
     LicenseOrderNumber,
+    DataSource,
+    OrgAction,
+    OrgActionStatus,
     Ori,
-    OrganizationStatus,
     OrmVendor,
     Psi,
     PsiWorkflowStatus,
@@ -33,11 +34,6 @@ class ContactInline(admin.TabularInline):
     exclude = ("telecom_operator",)
 
 
-class InteractionObjectInline(admin.TabularInline):
-    model = InteractionObject
-    extra = 0
-
-
 class EventInline(admin.TabularInline):
     model = Event
     extra = 0
@@ -47,7 +43,7 @@ class EventInline(admin.TabularInline):
 class CommentInline(admin.TabularInline):
     model = Comment
     extra = 0
-    exclude = ("telecom_operator",)
+    exclude = ("telecom_operator", "data_source")
     autocomplete_fields = ("author",)
 
 
@@ -70,7 +66,7 @@ class TelecomOperatorCommentInline(admin.TabularInline):
     model = Comment
     fk_name = "telecom_operator"
     extra = 0
-    exclude = ("organization",)
+    exclude = ("organization", "data_source")
     autocomplete_fields = ("author", "created_by", "updated_by")
 
 
@@ -99,28 +95,35 @@ class OriAdmin(admin.ModelAdmin):
     list_display = (
         "name",
         "inn",
-        "statuses_display",
-        "interaction_status",
+        "outsourcing",
         "responsible_person",
-        "updated_at",
+        "in_registry",
     )
-    list_filter = ("statuses", "interaction_status", "industry", "responsible_person")
+    list_filter = ("outsourcing", "industry", "responsible_person")
     search_fields = ("name", "inn", "case_number", "responsible_person__username", "responsible_person__first_name", "responsible_person__last_name")
-    readonly_fields = ("created_at", "updated_at")
     autocomplete_fields = (
-        "interaction_status",
         "industry",
         "orm_vendor",
         "sorm_owner",
-        "created_by",
-        "updated_by",
     )
-    filter_horizontal = ("statuses",)
-    inlines = (ContactInline, InteractionObjectInline, EventInline, CommentInline, PsiInline)
+    inlines = (ContactInline, EventInline, CommentInline, PsiInline)
 
-    @admin.display(description="Статусы")
-    def statuses_display(self, obj):
-        return ", ".join(obj.statuses.values_list("name", flat=True)) or "-"
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        maybe_assign_favicon_from_sites(obj)
+
+
+@admin.register(DataSource)
+class DataSourceAdmin(admin.ModelAdmin):
+    list_display = (
+        "name",
+        "inn",
+        "responsible_person",
+        "industry",
+    )
+    list_filter = ("industry", "responsible_person")
+    search_fields = ("name", "inn", "case_number", "responsible_person__username", "responsible_person__first_name", "responsible_person__last_name")
+    autocomplete_fields = ("industry",)
 
     def save_model(self, request, obj, form, change):
         super().save_model(request, obj, form, change)
@@ -132,11 +135,10 @@ class TelecomOperatorAdmin(admin.ModelAdmin):
     list_display = (
         "name",
         "inn",
-        "statuses_display",
         "responsible_person",
         "updated_at",
     )
-    list_filter = ("statuses", "responsible_person")
+    list_filter = ("responsible_person",)
     search_fields = (
         "name",
         "inn",
@@ -151,16 +153,11 @@ class TelecomOperatorAdmin(admin.ModelAdmin):
         "created_by",
         "updated_by",
     )
-    filter_horizontal = ("statuses",)
     inlines = (
         TelecomOperatorContactInline,
         TelecomOperatorCommentInline,
         TelecomOperatorLicenseInline,
     )
-
-    @admin.display(description="Статусы")
-    def statuses_display(self, obj):
-        return ", ".join(obj.statuses.values_list("name", flat=True)) or "-"
 
     def save_model(self, request, obj, form, change):
         super().save_model(request, obj, form, change)
@@ -243,20 +240,12 @@ class ContactAdmin(admin.ModelAdmin):
     autocomplete_fields = ("organization", "telecom_operator", "created_by", "updated_by")
 
 
-@admin.register(InteractionObject)
-class InteractionObjectAdmin(admin.ModelAdmin):
-    list_display = ("organization", "object_type", "object_value", "start_date", "end_date")
-    search_fields = ("organization__name", "object_value", "object_url")
-    list_filter = ("object_type",)
-    autocomplete_fields = ("organization", "object_type", "created_by", "updated_by")
-
-
 @admin.register(Comment)
 class CommentAdmin(admin.ModelAdmin):
-    list_display = ("organization", "telecom_operator", "author", "commented_at")
-    search_fields = ("organization__name", "telecom_operator__name", "author__username", "text")
-    list_filter = ("author", "organization", "telecom_operator")
-    autocomplete_fields = ("organization", "telecom_operator", "author", "created_by", "updated_by")
+    list_display = ("organization", "telecom_operator", "data_source", "author", "commented_at")
+    search_fields = ("organization__name", "telecom_operator__name", "data_source__name", "author__username", "text")
+    list_filter = ("author", "organization", "telecom_operator", "data_source")
+    autocomplete_fields = ("organization", "telecom_operator", "data_source", "author", "created_by", "updated_by")
 
 
 @admin.register(Event)
@@ -277,8 +266,6 @@ class EventAdmin(admin.ModelAdmin):
     )
 
 
-@admin.register(OrganizationStatus)
-@admin.register(InteractionStatus)
 @admin.register(InteractionObjectType)
 @admin.register(EventType)
 @admin.register(EventStatus)
@@ -289,6 +276,52 @@ class ReferenceAdmin(admin.ModelAdmin):
     list_display = ("name", "alias", "is_active")
     list_filter = ("is_active",)
     search_fields = ("name", "alias")
+
+
+@admin.register(ActionTemplate)
+class ActionTemplateAdmin(admin.ModelAdmin):
+    list_display = ("name", "items_count_display", "updated_at", "created_by")
+    search_fields = ("name",)
+    readonly_fields = ("created_at", "updated_at")
+    autocomplete_fields = ("created_by", "updated_by")
+
+    @admin.display(description="Действий")
+    def items_count_display(self, obj):
+        return obj.items_count
+
+
+@admin.register(OrgAction)
+class OrgActionAdmin(admin.ModelAdmin):
+    list_display = (
+        "task",
+        "organization",
+        "telecom_operator",
+        "data_source",
+        "status_display",
+        "deadline",
+        "updated_at",
+    )
+    list_filter = ("status", "deadline")
+    search_fields = (
+        "task",
+        "comment",
+        "result",
+        "organization__name",
+        "telecom_operator__name",
+        "data_source__name",
+    )
+    date_hierarchy = "deadline"
+    autocomplete_fields = (
+        "organization",
+        "telecom_operator",
+        "data_source",
+        "created_by",
+        "updated_by",
+    )
+
+    @admin.display(description="Статус")
+    def status_display(self, obj):
+        return dict(OrgActionStatus.choices).get(obj.status, obj.status)
 
 
 @admin.register(Psi)
@@ -318,29 +351,49 @@ class PsiAdmin(admin.ModelAdmin):
 
 # --- Группировка моделей CRM в админке (главная и /admin/crm/) ---
 
+_CRM_ORI_MODELS = (
+    "Ori",
+)
+_CRM_DATA_SOURCE_MODELS = (
+    "DataSource",
+)
 _CRM_TELECOM_MODELS = (
     "TelecomOperator",
+    "TelecomOperatorAuditEvent",
     "TelecomOperatorLicense",
     "LicenseOrder",
     "LicenseOrderNumber",
 )
 _CRM_COMMON_MODELS = (
-    "OrganizationStatus",
     "OrmVendor",
+    "ActionTemplate",
+    "OrgAction",
     "Psi",
 )
 
 
 def _split_crm_admin_app(app: dict) -> list[dict]:
-    """Разбивает один блок приложения crm на «Операторы связи», «Общее» и остальные модели."""
+    """Разбивает один блок приложения crm на «ОРИ», «Источники данных», «Операторы связи», «Общее» и остальные модели."""
     models = list(app.get("models") or [])
     by_object_name = {m["object_name"]: m for m in models}
-    used = set(_CRM_TELECOM_MODELS) | set(_CRM_COMMON_MODELS)
+    used = set(_CRM_ORI_MODELS) | set(_CRM_DATA_SOURCE_MODELS) | set(_CRM_TELECOM_MODELS) | set(_CRM_COMMON_MODELS)
+    ori = [by_object_name[name] for name in _CRM_ORI_MODELS if name in by_object_name]
+    data_sources = [by_object_name[name] for name in _CRM_DATA_SOURCE_MODELS if name in by_object_name]
     telecom = [by_object_name[name] for name in _CRM_TELECOM_MODELS if name in by_object_name]
     common = [by_object_name[name] for name in _CRM_COMMON_MODELS if name in by_object_name]
     other = [m for m in models if m["object_name"] not in used]
     orig_name = app.get("name") or "CRM"
     out: list[dict] = []
+    if ori:
+        block = dict(app)
+        block["name"] = "ОРИ"
+        block["models"] = ori
+        out.append(block)
+    if data_sources:
+        block = dict(app)
+        block["name"] = "Источники данных"
+        block["models"] = data_sources
+        out.append(block)
     if telecom:
         block = dict(app)
         block["name"] = "Операторы связи"

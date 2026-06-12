@@ -7,14 +7,13 @@ from django.core.validators import URLValidator
 from django.db import transaction
 
 from apps.crm.models import (
+    DataSource,
     Industry,
-    InteractionObject,
-    InteractionObjectType,
-    InteractionStatus,
     Ori,
-    OrganizationStatus,
     OrmVendor,
 )
+
+EIAS_TYPE = "Источник ЕИАС"
 
 
 class Command(BaseCommand):
@@ -59,17 +58,19 @@ class Command(BaseCommand):
             user.save(update_fields=["password"])
         return user
 
+    def _is_eias_source(self, row: dict) -> bool:
+        return (row.get("Тип") or "").strip() == EIAS_TYPE
+
     @transaction.atomic
     def handle(self, *args, **options):
         file_path = Path(options["path"])
         if not file_path.exists():
             raise CommandError(f"Файл не найден: {file_path}")
 
-        site_type, _ = InteractionObjectType.objects.get_or_create(name="Сайт")
-        app_type, _ = InteractionObjectType.objects.get_or_create(name="Приложение")
-
-        created = 0
-        updated = 0
+        ori_created = 0
+        ori_updated = 0
+        ds_created = 0
+        ds_updated = 0
         issues = 0
         sorm_owner_links = []
 
@@ -83,36 +84,38 @@ class Command(BaseCommand):
                     self.stdout.write(self.style.WARNING(f"Строка {idx}: пропущена, нет названия или ИНН"))
                     continue
 
+                responsible_person = self._get_or_create_user(row.get("Ответственное лицо") or "")
+                case_number = (row.get("№ дела") or "").strip()
+                sites = self._parse_sites((row.get("Сайт") or "").strip())
+                industry = self._get_ref(Industry, row.get("Отрасль") or "")
+
+                if self._is_eias_source(row):
+                    defaults = {
+                        "responsible_person": responsible_person,
+                        "case_number": case_number,
+                        "sites": sites,
+                        "industry": industry,
+                    }
+                    obj, was_created = DataSource.objects.update_or_create(
+                        inn=inn,
+                        name=name,
+                        defaults=defaults,
+                    )
+                    ds_created += int(was_created)
+                    ds_updated += int(not was_created)
+                    continue
+
                 defaults = {
-                    "responsible_person": self._get_or_create_user(row.get("Ответственное лицо") or ""),
-                    "case_number": (row.get("№ дела") or "").strip(),
-                    "sites": self._parse_sites((row.get("Сайт") or "").strip()),
-                    "interaction_status": self._get_ref(InteractionStatus, row.get("Статус взаимодействия") or ""),
-                    "industry": self._get_ref(Industry, row.get("Отрасль") or ""),
+                    "responsible_person": responsible_person,
+                    "case_number": case_number,
+                    "sites": sites,
+                    "industry": industry,
                     "orm_vendor": self._get_ref(OrmVendor, row.get("Производитель ТС ОРМ") or ""),
                 }
-                organization_status = self._get_ref(OrganizationStatus, row.get("Статус") or "")
-
                 obj, was_created = Ori.objects.update_or_create(inn=inn, name=name, defaults=defaults)
-                if organization_status:
-                    obj.statuses.set([organization_status])
-                else:
-                    obj.statuses.clear()
-                created += int(was_created)
-                updated += int(not was_created)
+                ori_created += int(was_created)
+                ori_updated += int(not was_created)
                 sorm_owner_links.append((obj.pk, (row.get("Владелец СОРМ") or "").strip()))
-
-                # В CSV несколько сайтов и мобильные приложения хранятся в одной строке.
-                sites_raw = (row.get("Сайт") or "").strip()
-                if sites_raw:
-                    for chunk in [x.strip() for x in sites_raw.split(",") if x.strip()]:
-                        obj_type = app_type if "приложение" in chunk.lower() else site_type
-                        InteractionObject.objects.get_or_create(
-                            organization=obj,
-                            object_type=obj_type,
-                            object_value=chunk,
-                            defaults={"object_url": ""},
-                        )
 
         for org_id, owner_name in sorm_owner_links:
             if not owner_name:
@@ -122,4 +125,11 @@ class Command(BaseCommand):
                 continue
             Ori.objects.filter(pk=org_id).update(sorm_owner=owner)
 
-        self.stdout.write(self.style.SUCCESS(f"Импорт завершен. Создано: {created}, обновлено: {updated}, проблем: {issues}."))
+        self.stdout.write(
+            self.style.SUCCESS(
+                "Импорт завершен. "
+                f"ОРИ: создано {ori_created}, обновлено {ori_updated}. "
+                f"Источники данных: создано {ds_created}, обновлено {ds_updated}. "
+                f"Проблем: {issues}."
+            )
+        )

@@ -1,5 +1,5 @@
 from django.conf import settings
-from django.core.validators import MinLengthValidator, URLValidator
+from django.core.validators import MinLengthValidator
 from django.db import models
 from django.utils import timezone
 
@@ -43,18 +43,6 @@ class NamedReference(models.Model):
         return self.name
 
 
-class OrganizationStatus(NamedReference):
-    class Meta(NamedReference.Meta):
-        verbose_name = "Статус организации"
-        verbose_name_plural = "Статусы организаций"
-
-
-class InteractionStatus(NamedReference):
-    class Meta(NamedReference.Meta):
-        verbose_name = "Статус взаимодействия"
-        verbose_name_plural = "Статусы взаимодействия"
-
-
 class InteractionObjectType(NamedReference):
     class Meta(NamedReference.Meta):
         verbose_name = "Тип объекта взаимодействия"
@@ -93,7 +81,7 @@ class OrmVendor(NamedReference):
         verbose_name_plural = "Производители ТС ОРМ"
 
 
-class Ori(TimeAuditModel):
+class Ori(models.Model):
     icon = models.ImageField(upload_to="organizations/icons/", null=True, blank=True, verbose_name="Иконка")
     name = models.CharField(max_length=500, verbose_name="Наименование организации")
     inn = models.CharField(
@@ -101,20 +89,6 @@ class Ori(TimeAuditModel):
         db_index=True,
         validators=[MinLengthValidator(10)],
         verbose_name="ИНН",
-    )
-    statuses = models.ManyToManyField(
-        OrganizationStatus,
-        related_name="organizations_by_statuses",
-        blank=True,
-        verbose_name="Статусы",
-    )
-    interaction_status = models.ForeignKey(
-        InteractionStatus,
-        on_delete=models.PROTECT,
-        related_name="organizations",
-        null=True,
-        blank=True,
-        verbose_name="Статус взаимодействия",
     )
     case_number = models.CharField(max_length=128, blank=True, verbose_name="Номер дела")
     responsible_person = models.ForeignKey(
@@ -125,7 +99,8 @@ class Ori(TimeAuditModel):
         blank=True,
         verbose_name="Ответственное лицо",
     )
-    in_registry = models.CharField(max_length=255, blank=True, verbose_name="Наличие в реестре")
+    outsourcing = models.BooleanField(default=False, verbose_name="Аутсорминг")
+    in_registry = models.CharField(max_length=255, blank=True, verbose_name="Номер в реестре")
     registry_record_url = models.URLField(blank=True, verbose_name="Ссылка на запись в реестре")
     sites = models.JSONField(default=list, blank=True, validators=[validate_url_list], verbose_name="Сайты")
     correspondence_address = models.TextField(blank=True, verbose_name="Адрес для корреспонденции")
@@ -170,39 +145,49 @@ class Ori(TimeAuditModel):
         return f"{self.name} ({self.inn})"
 
 
-class InteractionObject(TimeAuditModel):
-    organization = models.ForeignKey(
-        Ori,
-        on_delete=models.CASCADE,
-        related_name="interaction_objects",
-        verbose_name="ОРИ",
+class DataSource(models.Model):
+    icon = models.ImageField(upload_to="data_sources/icons/", null=True, blank=True, verbose_name="Иконка")
+    name = models.CharField(max_length=500, verbose_name="Наименование")
+    inn = models.CharField(
+        max_length=12,
+        db_index=True,
+        validators=[MinLengthValidator(10)],
+        verbose_name="ИНН",
     )
-    start_date = models.DateField(null=True, blank=True, verbose_name="Начало действия")
-    end_date = models.DateField(null=True, blank=True, verbose_name="Завершение действия")
-    object_type = models.ForeignKey(
-        InteractionObjectType,
-        on_delete=models.PROTECT,
-        related_name="interaction_objects",
-        verbose_name="Тип объекта",
+    case_number = models.CharField(max_length=128, blank=True, verbose_name="Номер дела")
+    responsible_person = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="responsible_data_sources",
+        null=True,
+        blank=True,
+        verbose_name="Ответственное лицо",
     )
-    object_value = models.CharField(max_length=500, verbose_name="Объект взаимодействия")
-    object_url = models.URLField(blank=True, validators=[URLValidator(schemes=["http", "https"])], verbose_name="Ссылка на объект")
+    sites = models.JSONField(default=list, blank=True, validators=[validate_url_list], verbose_name="Сайты")
+    correspondence_address = models.TextField(blank=True, verbose_name="Адрес для корреспонденции")
+    industry = models.ForeignKey(
+        Industry,
+        on_delete=models.SET_NULL,
+        related_name="data_sources",
+        null=True,
+        blank=True,
+        verbose_name="Отрасль",
+    )
 
     class Meta:
-        verbose_name = "Объект взаимодействия"
-        verbose_name_plural = "Объекты взаимодействия"
-        indexes = [models.Index(fields=["organization", "object_type"])]
+        verbose_name = "Источник данных"
+        verbose_name_plural = "Источники данных"
+        ordering = ("name",)
+        indexes = [
+            models.Index(fields=["inn"]),
+            models.Index(fields=["name"]),
+        ]
         constraints = [
-            models.CheckConstraint(
-                condition=models.Q(end_date__isnull=True)
-                | models.Q(start_date__isnull=True)
-                | models.Q(end_date__gte=models.F("start_date")),
-                name="interaction_dates_valid",
-            )
+            models.UniqueConstraint(fields=["inn", "name"], name="uniq_data_source_inn_name"),
         ]
 
     def __str__(self) -> str:
-        return self.object_value
+        return f"{self.name} ({self.inn})"
 
 
 class Contact(TimeAuditModel):
@@ -342,6 +327,14 @@ class Comment(TimeAuditModel):
         null=True,
         blank=True,
     )
+    data_source = models.ForeignKey(
+        "DataSource",
+        on_delete=models.CASCADE,
+        related_name="comments",
+        verbose_name="Источник данных",
+        null=True,
+        blank=True,
+    )
     author = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,
@@ -358,16 +351,19 @@ class Comment(TimeAuditModel):
         constraints = [
             models.CheckConstraint(
                 condition=(
-                    models.Q(organization__isnull=False, telecom_operator__isnull=True)
-                    | models.Q(organization__isnull=True, telecom_operator__isnull=False)
+                    models.Q(organization__isnull=False, telecom_operator__isnull=True, data_source__isnull=True)
+                    | models.Q(organization__isnull=True, telecom_operator__isnull=False, data_source__isnull=True)
+                    | models.Q(organization__isnull=True, telecom_operator__isnull=True, data_source__isnull=False)
                 ),
-                name="comment_org_xor_operator",
+                name="comment_single_scope",
             ),
         ]
 
     def __str__(self) -> str:
         if self.organization_id:
             return f"Комментарий {self.organization.name}"
+        if self.data_source_id:
+            return f"Комментарий {self.data_source.name}"
         return f"Комментарий {self.telecom_operator.name}"
 
 
@@ -441,12 +437,6 @@ class TelecomOperator(TimeAuditModel):
         db_index=True,
         validators=[MinLengthValidator(10)],
         verbose_name="ИНН",
-    )
-    statuses = models.ManyToManyField(
-        OrganizationStatus,
-        related_name="telecom_operators_by_statuses",
-        blank=True,
-        verbose_name="Статусы",
     )
     case_number = models.CharField(max_length=128, blank=True, verbose_name="Номер дела")
     responsible_person = models.ForeignKey(
@@ -583,5 +573,103 @@ class TelecomOperatorAuditEvent(models.Model):
     def __str__(self) -> str:
         label = self.operator_name or (self.telecom_operator.name if self.telecom_operator_id else "—")
         return f"{self.get_event_type_display()}: {label}"
+
+
+class OrgActionStatus(models.TextChoices):
+    PLANNED = "planned", "Запланировано"
+    DONE = "done", "Готово"
+    OVERDUE = "overdue", "Просрочено"
+
+
+class OrgAction(TimeAuditModel):
+    organization = models.ForeignKey(
+        Ori,
+        on_delete=models.CASCADE,
+        related_name="org_actions",
+        verbose_name="ОРИ",
+        null=True,
+        blank=True,
+    )
+    telecom_operator = models.ForeignKey(
+        "TelecomOperator",
+        on_delete=models.CASCADE,
+        related_name="org_actions",
+        verbose_name="Оператор связи",
+        null=True,
+        blank=True,
+    )
+    data_source = models.ForeignKey(
+        DataSource,
+        on_delete=models.CASCADE,
+        related_name="org_actions",
+        verbose_name="Источник данных",
+        null=True,
+        blank=True,
+    )
+    task = models.CharField(max_length=500, verbose_name="Задача")
+    status = models.CharField(
+        max_length=16,
+        choices=OrgActionStatus.choices,
+        default=OrgActionStatus.PLANNED,
+        verbose_name="Статус",
+    )
+    comment = models.TextField(blank=True, verbose_name="Комментарий")
+    deadline = models.DateField(null=True, blank=True, verbose_name="Срок")
+    result = models.TextField(blank=True, verbose_name="Результат")
+
+    class Meta:
+        verbose_name = "Действие"
+        verbose_name_plural = "Действия"
+        ordering = ("deadline", "pk")
+        indexes = [
+            models.Index(fields=["organization", "deadline"]),
+            models.Index(fields=["telecom_operator", "deadline"]),
+            models.Index(fields=["data_source", "deadline"]),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(organization__isnull=False, telecom_operator__isnull=True, data_source__isnull=True)
+                    | models.Q(organization__isnull=True, telecom_operator__isnull=False, data_source__isnull=True)
+                    | models.Q(organization__isnull=True, telecom_operator__isnull=True, data_source__isnull=False)
+                ),
+                name="org_action_single_scope",
+            ),
+        ]
+
+    def save(self, *args, **kwargs):
+        if (
+            self.deadline
+            and self.deadline < timezone.localdate()
+            and self.status == OrgActionStatus.PLANNED
+        ):
+            self.status = OrgActionStatus.OVERDUE
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        if self.organization_id:
+            return f"{self.task} ({self.organization.name})"
+        if self.data_source_id:
+            return f"{self.task} ({self.data_source.name})"
+        if self.telecom_operator_id:
+            return f"{self.task} ({self.telecom_operator.name})"
+        return self.task
+
+
+class ActionTemplate(TimeAuditModel):
+    name = models.CharField(max_length=255, unique=True, verbose_name="Название")
+    items = models.JSONField(default=list, verbose_name="Действия")
+
+    class Meta:
+        verbose_name = "Шаблон действий"
+        verbose_name_plural = "Шаблоны действий"
+        ordering = ("name",)
+
+    def __str__(self) -> str:
+        return self.name
+
+    @property
+    def items_count(self) -> int:
+        return len(self.items) if isinstance(self.items, list) else 0
 
 
