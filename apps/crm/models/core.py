@@ -43,18 +43,18 @@ class NamedReference(models.Model):
         return self.name
 
 
-class InteractionObjectType(NamedReference):
-    class Meta(NamedReference.Meta):
-        verbose_name = "Тип объекта взаимодействия"
-        verbose_name_plural = "Типы объектов взаимодействия"
-
-
 class PsiWorkflowStatus(models.TextChoices):
     ASSIGNED = "assigned", "Назначены"
     IN_PROGRESS = "in_progress", "В работе"
     FAILED = "failed", "Провалены"
     OVERDUE = "overdue", "Просрочены"
     SUCCESSFUL = "successful", "Успешны"
+
+
+class EntityStatusKind(models.TextChoices):
+    STATUS = "status", "Статус"
+    MESSAGE = "message", "Сообщение"
+    WARNING = "warning", "Предупреждение"
 
 
 class EventType(NamedReference):
@@ -84,6 +84,7 @@ class OrmVendor(NamedReference):
 class Ori(models.Model):
     icon = models.ImageField(upload_to="organizations/icons/", null=True, blank=True, verbose_name="Иконка")
     name = models.CharField(max_length=500, verbose_name="Наименование организации")
+    is_archived = models.BooleanField(default=False, verbose_name="Архив")
     inn = models.CharField(
         max_length=12,
         db_index=True,
@@ -101,7 +102,6 @@ class Ori(models.Model):
     )
     outsourcing = models.BooleanField(default=False, verbose_name="Аутсорминг")
     in_registry = models.CharField(max_length=255, blank=True, verbose_name="Номер в реестре")
-    registry_record_url = models.URLField(blank=True, verbose_name="Ссылка на запись в реестре")
     sites = models.JSONField(default=list, blank=True, validators=[validate_url_list], verbose_name="Сайты")
     correspondence_address = models.TextField(blank=True, verbose_name="Адрес для корреспонденции")
     industry = models.ForeignKey(
@@ -128,6 +128,14 @@ class Ori(models.Model):
         blank=True,
         verbose_name="Владелец СОРМ",
     )
+    statuses = models.ManyToManyField(
+        "EntityStatus",
+        through="EntityStatusLink",
+        through_fields=("organization", "status"),
+        related_name="organizations",
+        blank=True,
+        verbose_name="Статусы",
+    )
 
     class Meta:
         verbose_name = "ОРИ"
@@ -148,6 +156,7 @@ class Ori(models.Model):
 class DataSource(models.Model):
     icon = models.ImageField(upload_to="data_sources/icons/", null=True, blank=True, verbose_name="Иконка")
     name = models.CharField(max_length=500, verbose_name="Наименование")
+    is_archived = models.BooleanField(default=False, verbose_name="Архив")
     inn = models.CharField(
         max_length=12,
         db_index=True,
@@ -172,6 +181,14 @@ class DataSource(models.Model):
         null=True,
         blank=True,
         verbose_name="Отрасль",
+    )
+    statuses = models.ManyToManyField(
+        "EntityStatus",
+        through="EntityStatusLink",
+        through_fields=("data_source", "status"),
+        related_name="data_sources",
+        blank=True,
+        verbose_name="Статусы",
     )
 
     class Meta:
@@ -207,6 +224,14 @@ class Contact(TimeAuditModel):
         null=True,
         blank=True,
     )
+    data_source = models.ForeignKey(
+        "DataSource",
+        on_delete=models.CASCADE,
+        related_name="contacts",
+        verbose_name="Источник данных",
+        null=True,
+        blank=True,
+    )
     position = models.CharField(max_length=255, blank=True, verbose_name="Должность")
     first_name = models.CharField(max_length=120, blank=True, verbose_name="Имя")
     phone = models.CharField(
@@ -224,12 +249,14 @@ class Contact(TimeAuditModel):
         indexes = [
             models.Index(fields=["organization", "first_name"]),
             models.Index(fields=["telecom_operator", "first_name"]),
+            models.Index(fields=["data_source", "first_name"]),
         ]
         constraints = [
             models.CheckConstraint(
                 condition=(
-                    models.Q(organization__isnull=False, telecom_operator__isnull=True)
-                    | models.Q(organization__isnull=True, telecom_operator__isnull=False)
+                    models.Q(organization__isnull=False, telecom_operator__isnull=True, data_source__isnull=True)
+                    | models.Q(organization__isnull=True, telecom_operator__isnull=False, data_source__isnull=True)
+                    | models.Q(organization__isnull=True, telecom_operator__isnull=True, data_source__isnull=False)
                 ),
                 name="contact_org_xor_operator",
             ),
@@ -305,8 +332,12 @@ class Psi(TimeAuditModel):
         if self.organization_id:
             return f"ПСИ {self.organization.name}"
         if self.license_order_id:
-            lic = self.license_order.license
-            return f"ПСИ {lic.title} (приказ)"
+            order = self.license_order
+            if order.telecom_network_id:
+                return f"ПСИ {order.telecom_network.name} (приказ)"
+            if order.telecom_operator_id:
+                return f"ПСИ {order.telecom_operator.name} (приказ)"
+            return f"ПСИ (приказ #{order.pk})"
         return f"ПСИ #{self.pk}"
 
 
@@ -429,9 +460,16 @@ class LicenseOrderNumber(NamedReference):
         verbose_name_plural = "Номера приказов"
 
 
+class TelecomNetworkName(NamedReference):
+    class Meta(NamedReference.Meta):
+        verbose_name = "Наименование сети связи"
+        verbose_name_plural = "Наименования сетей связи"
+
+
 class TelecomOperator(TimeAuditModel):
     icon = models.ImageField(upload_to="telecom_operators/icons/", null=True, blank=True, verbose_name="Иконка")
     name = models.CharField(max_length=500, verbose_name="Наименование организации")
+    is_archived = models.BooleanField(default=False, verbose_name="Архив")
     inn = models.CharField(
         max_length=12,
         db_index=True,
@@ -449,6 +487,14 @@ class TelecomOperator(TimeAuditModel):
     )
     sites = models.JSONField(default=list, blank=True, validators=[validate_url_list], verbose_name="Сайты")
     correspondence_address = models.TextField(blank=True, verbose_name="Адрес для корреспонденции")
+    statuses = models.ManyToManyField(
+        "EntityStatus",
+        through="EntityStatusLink",
+        through_fields=("telecom_operator", "status"),
+        related_name="telecom_operators",
+        blank=True,
+        verbose_name="Статусы",
+    )
 
     class Meta:
         verbose_name = "Оператор связи"
@@ -466,12 +512,141 @@ class TelecomOperator(TimeAuditModel):
         return f"{self.name} ({self.inn})"
 
 
+class TelecomNetwork(TimeAuditModel):
+    name = models.ForeignKey(
+        TelecomNetworkName,
+        on_delete=models.PROTECT,
+        related_name="networks",
+        verbose_name="Наименование",
+    )
+    telecom_operator = models.ForeignKey(
+        TelecomOperator,
+        on_delete=models.CASCADE,
+        related_name="networks",
+        verbose_name="Оператор связи",
+    )
+    comment = models.TextField(blank=True, verbose_name="Комментарий")
+
+    class Meta:
+        verbose_name = "Сеть связи"
+        verbose_name_plural = "Сети связи"
+        ordering = ("telecom_operator", "name__name")
+
+    def __str__(self) -> str:
+        return str(self.name)
+
+
+class EntityStatus(models.Model):
+    text = models.CharField(max_length=500, verbose_name="Текст")
+    kind = models.CharField(
+        max_length=16,
+        choices=EntityStatusKind.choices,
+        default=EntityStatusKind.STATUS,
+        verbose_name="Тип",
+    )
+
+    class Meta:
+        verbose_name = "Статус"
+        verbose_name_plural = "Статусы"
+        ordering = ("kind", "text")
+
+    def __str__(self) -> str:
+        return self.text
+
+
+class EntityStatusLink(models.Model):
+    status = models.ForeignKey(
+        EntityStatus,
+        on_delete=models.CASCADE,
+        related_name="links",
+        verbose_name="Статус",
+    )
+    organization = models.ForeignKey(
+        Ori,
+        on_delete=models.CASCADE,
+        related_name="status_links",
+        verbose_name="ОРИ",
+        null=True,
+        blank=True,
+    )
+    telecom_operator = models.ForeignKey(
+        TelecomOperator,
+        on_delete=models.CASCADE,
+        related_name="status_links",
+        verbose_name="Оператор связи",
+        null=True,
+        blank=True,
+    )
+    data_source = models.ForeignKey(
+        DataSource,
+        on_delete=models.CASCADE,
+        related_name="status_links",
+        verbose_name="Источник данных",
+        null=True,
+        blank=True,
+    )
+
+    class Meta:
+        verbose_name = "Привязка статуса"
+        verbose_name_plural = "Привязки статусов"
+        ordering = ("status", "pk")
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(organization__isnull=False, telecom_operator__isnull=True, data_source__isnull=True)
+                    | models.Q(organization__isnull=True, telecom_operator__isnull=False, data_source__isnull=True)
+                    | models.Q(organization__isnull=True, telecom_operator__isnull=True, data_source__isnull=False)
+                ),
+                name="entity_status_link_single_scope",
+            ),
+            models.UniqueConstraint(
+                fields=("status", "organization"),
+                condition=models.Q(organization__isnull=False),
+                name="uniq_entity_status_org",
+            ),
+            models.UniqueConstraint(
+                fields=("status", "telecom_operator"),
+                condition=models.Q(telecom_operator__isnull=False),
+                name="uniq_entity_status_telecom",
+            ),
+            models.UniqueConstraint(
+                fields=("status", "data_source"),
+                condition=models.Q(data_source__isnull=False),
+                name="uniq_entity_status_data_source",
+            ),
+        ]
+
+    @property
+    def entity(self):
+        if self.organization_id:
+            return self.organization
+        if self.telecom_operator_id:
+            return self.telecom_operator
+        if self.data_source_id:
+            return self.data_source
+        return None
+
+    def __str__(self) -> str:
+        entity = self.entity
+        if entity is not None:
+            return f"{self.status} → {entity}"
+        return str(self.status)
+
+
 class TelecomOperatorLicense(TimeAuditModel):
     telecom_operator = models.ForeignKey(
         TelecomOperator,
         on_delete=models.CASCADE,
         related_name="licenses",
         verbose_name="Оператор связи",
+    )
+    telecom_network = models.ForeignKey(
+        TelecomNetwork,
+        on_delete=models.SET_NULL,
+        related_name="licenses",
+        verbose_name="Сеть связи",
+        null=True,
+        blank=True,
     )
     title = models.CharField(max_length=500, verbose_name="Наименование")
     number = models.CharField(max_length=255, blank=True, verbose_name="Номер")
@@ -503,11 +678,21 @@ class TelecomOperatorLicense(TimeAuditModel):
 
 
 class LicenseOrder(TimeAuditModel):
-    license = models.ForeignKey(
-        TelecomOperatorLicense,
+    telecom_operator = models.ForeignKey(
+        TelecomOperator,
+        on_delete=models.CASCADE,
+        related_name="license_orders",
+        verbose_name="Оператор связи",
+        null=True,
+        blank=True,
+    )
+    telecom_network = models.ForeignKey(
+        TelecomNetwork,
         on_delete=models.CASCADE,
         related_name="orders",
-        verbose_name="Лицензия",
+        verbose_name="Сеть связи",
+        null=True,
+        blank=True,
     )
     order_number = models.ForeignKey(
         LicenseOrderNumber,
@@ -524,10 +709,14 @@ class LicenseOrder(TimeAuditModel):
     class Meta:
         verbose_name = "Приказ лицензии"
         verbose_name_plural = "Приказы лицензий"
-        ordering = ("license", "pk")
+        ordering = ("telecom_network", "pk")
 
     def __str__(self) -> str:
-        return f"{self.order_number} — {self.license.title}"
+        if self.telecom_network_id:
+            return f"{self.order_number} — {self.telecom_network.name}"
+        if self.telecom_operator_id:
+            return f"{self.order_number} — {self.telecom_operator.name}"
+        return str(self.order_number)
 
 
 class TelecomOperatorAuditEventType(models.TextChoices):
@@ -672,4 +861,36 @@ class ActionTemplate(TimeAuditModel):
     def items_count(self) -> int:
         return len(self.items) if isinstance(self.items, list) else 0
 
+
+class AppSettings(models.Model):
+    SINGLETON_PK = 1
+
+    responsibility_region = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        verbose_name="Регион ответственности",
+    )
+
+    class Meta:
+        verbose_name = "Настройки приложения"
+        verbose_name_plural = "Настройки приложения"
+
+    def save(self, *args, **kwargs):
+        self.pk = self.SINGLETON_PK
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        return
+
+    @classmethod
+    def load(cls) -> "AppSettings":
+        settings, _ = cls.objects.get_or_create(
+            pk=cls.SINGLETON_PK,
+            defaults={"responsibility_region": "Краснодарский край"},
+        )
+        return settings
+
+    def __str__(self) -> str:
+        return "Настройки приложения"
 

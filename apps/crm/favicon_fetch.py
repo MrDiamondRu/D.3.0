@@ -7,8 +7,10 @@ from __future__ import annotations
 
 import ipaddress
 import re
+import shutil
 import socket
 import ssl
+import subprocess
 import urllib.error
 import urllib.request
 from html.parser import HTMLParser
@@ -16,6 +18,8 @@ from io import BytesIO
 from urllib.parse import urljoin, urlparse
 
 from django.core.files.base import ContentFile
+
+from apps.crm.validators import normalize_url_idna
 
 _MAX_HTML_BYTES = 400 * 1024
 _MAX_IMAGE_BYTES = 512 * 1024
@@ -61,6 +65,7 @@ def _url_safe_for_fetch(url: str) -> bool:
 
 
 def _http_get_bytes(url: str, *, limit: int) -> bytes | None:
+    url = normalize_url_idna(url)
     if not _url_safe_for_fetch(url):
         return None
     req = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
@@ -131,6 +136,41 @@ def _sorted_icon_hrefs(items: list[tuple[str, str, str]], base_url: str) -> list
     return out
 
 
+def _is_svg(data: bytes) -> bool:
+    if not data:
+        return False
+    sample = data[:1024].lstrip().lower()
+    return sample.startswith(b"<svg") or (sample.startswith(b"<?xml") and b"<svg" in sample)
+
+
+def _svg_bytes_to_png(data: bytes, max_side: int = 256) -> bytes | None:
+    rsvg = shutil.which("rsvg-convert")
+    if not rsvg:
+        return None
+    try:
+        proc = subprocess.run(
+            [rsvg, "-w", str(max_side), "-f", "png"],
+            input=data,
+            capture_output=True,
+            timeout=_TIMEOUT_SEC,
+            check=True,
+        )
+    except (subprocess.SubprocessError, OSError):
+        return None
+    png = proc.stdout
+    if not png or not _is_raster_image(png):
+        return None
+    return _to_png_thumbnail(png, max_side)
+
+
+def _bytes_to_png_thumbnail(data: bytes, max_side: int = 256) -> bytes | None:
+    if _is_raster_image(data):
+        return _to_png_thumbnail(data, max_side)
+    if _is_svg(data):
+        return _svg_bytes_to_png(data, max_side)
+    return None
+
+
 def _is_raster_image(data: bytes) -> bool:
     if not data or len(data) < 8:
         return False
@@ -165,13 +205,13 @@ def fetch_favicon_for_page_url(page_url: str) -> bytes | None:
     """
     По URL страницы сайта пытается получить растровое изображение favicon (PNG в байтах).
     """
-    page_url = (page_url or "").strip()
+    page_url = normalize_url_idna((page_url or "").strip())
     if not page_url:
         return None
 
     parsed = urlparse(page_url)
     if not parsed.scheme:
-        page_url = "https://" + page_url
+        page_url = normalize_url_idna("https://" + page_url)
         parsed = urlparse(page_url)
     if parsed.scheme not in ("http", "https"):
         return None
@@ -203,9 +243,9 @@ def fetch_favicon_for_page_url(page_url: str) -> bytes | None:
             continue
         seen.add(cand)
         raw = _http_get_bytes(cand, limit=_MAX_IMAGE_BYTES)
-        if not raw or not _is_raster_image(raw):
+        if not raw:
             continue
-        png = _to_png_thumbnail(raw)
+        png = _bytes_to_png_thumbnail(raw)
         if png:
             return png
     return None
@@ -223,18 +263,21 @@ def maybe_assign_favicon_from_sites(obj) -> bool:
     if not sites:
         return False
 
-    png: bytes | None = None
-    for raw in sites:
-        url = (raw or "").strip()
-        if not url:
-            continue
-        png = fetch_favicon_for_page_url(url)
-        if png:
-            break
-    if not png:
-        return False
+    try:
+        png: bytes | None = None
+        for raw in sites:
+            url = (raw or "").strip()
+            if not url:
+                continue
+            png = fetch_favicon_for_page_url(url)
+            if png:
+                break
+        if not png:
+            return False
 
-    name = f"favicon_{obj.pk}.png"
-    obj.icon.save(name, ContentFile(png), save=False)
-    obj.save(update_fields=["icon"])
+        name = f"favicon_{obj.pk}.png"
+        obj.icon.save(name, ContentFile(png), save=False)
+        obj.save(update_fields=["icon"])
+    except Exception:
+        return False
     return True

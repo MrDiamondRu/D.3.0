@@ -9,7 +9,9 @@ from dataclasses import dataclass
 from datetime import datetime
 from html import unescape
 
-from apps.crm.models import TelecomLicenseStatus, TelecomOperator, TelecomOperatorLicense
+from apps.crm.models import AppSettings, TelecomLicenseStatus, TelecomOperator, TelecomOperatorLicense
+
+_RUSSIAN_FEDERATION_MARKER = "Российская Федерация"
 
 _RKN_SEARCH_BASE_URL = "https://rkn.gov.ru/activity/connection/register/license/"
 _RKN_DETAIL_URL = "https://rkn.gov.ru/activity/connection/register/license/?id={license_id}"
@@ -119,6 +121,16 @@ def _map_status(raw_status: str) -> str:
     return TelecomLicenseStatus.ACTIVE
 
 
+def _territory_is_allowed(territory: str, responsibility_region: str) -> bool:
+    normalized = territory.strip().casefold()
+    if not normalized:
+        return False
+    if _RUSSIAN_FEDERATION_MARKER.casefold() in normalized:
+        return True
+    region = responsibility_region.strip().casefold()
+    return bool(region and region in normalized)
+
+
 def sync_telecom_operator_licenses_from_rkn(operator: TelecomOperator) -> dict[str, int]:
     if not operator.inn:
         raise RknSyncError("У оператора отсутствует ИНН.")
@@ -126,9 +138,11 @@ def sync_telecom_operator_licenses_from_rkn(operator: TelecomOperator) -> dict[s
     search_url = _build_search_url(operator.inn)
     search_html = _http_get(search_url)
     parsed_rows = _parse_search_rows(search_html)
+    responsibility_region = AppSettings.load().responsibility_region
 
     existing_by_number = {x.number: x for x in operator.licenses.all()}
     created_count = 0
+    newly_created_ids: set[int] = set()
     for row in parsed_rows:
         if row.number in existing_by_number:
             continue
@@ -138,10 +152,12 @@ def sync_telecom_operator_licenses_from_rkn(operator: TelecomOperator) -> dict[s
             number=row.number,
         )
         existing_by_number[row.number] = lic
+        newly_created_ids.add(lic.pk)
         created_count += 1
 
     updated_count = 0
     errors_count = 0
+    skipped_territory_count = 0
     for lic in operator.licenses.all():
         if not lic.number:
             continue
@@ -159,6 +175,13 @@ def sync_telecom_operator_licenses_from_rkn(operator: TelecomOperator) -> dict[s
         end_raw = detail.get("срок действия до", "")
         territory_raw = detail.get("территория действия лицензии", "")
 
+        if not _territory_is_allowed(territory_raw, responsibility_region):
+            skipped_territory_count += 1
+            if lic.pk in newly_created_ids:
+                lic.delete()
+                created_count -= 1
+            continue
+
         lic.status = _map_status(status_raw)
         lic.start_date = _parse_ru_date(start_raw)
         lic.end_date = _parse_ru_date(end_raw)
@@ -171,4 +194,5 @@ def sync_telecom_operator_licenses_from_rkn(operator: TelecomOperator) -> dict[s
         "created": created_count,
         "updated": updated_count,
         "errors": errors_count,
+        "skipped_territory": skipped_territory_count,
     }

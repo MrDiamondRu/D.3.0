@@ -6,13 +6,16 @@ from apps.crm.favicon_fetch import maybe_assign_favicon_from_sites
 
 from .models import (
     ActionTemplate,
+    AppSettings,
     Comment,
     Contact,
+    EntityStatus,
+    EntityStatusKind,
+    EntityStatusLink,
     Event,
     EventStatus,
     EventType,
     Industry,
-    InteractionObjectType,
     LicenseOrder,
     LicenseOrderNumber,
     DataSource,
@@ -25,13 +28,15 @@ from .models import (
     TelecomOperatorAuditEvent,
     TelecomOperator,
     TelecomOperatorLicense,
+    TelecomNetwork,
+    TelecomNetworkName,
 )
 
 
 class ContactInline(admin.TabularInline):
     model = Contact
     extra = 0
-    exclude = ("telecom_operator",)
+    exclude = ("telecom_operator", "data_source")
 
 
 class EventInline(admin.TabularInline):
@@ -58,7 +63,15 @@ class TelecomOperatorContactInline(admin.TabularInline):
     model = Contact
     fk_name = "telecom_operator"
     extra = 0
-    exclude = ("organization",)
+    exclude = ("organization", "data_source")
+    autocomplete_fields = ("created_by", "updated_by")
+
+
+class DataSourceContactInline(admin.TabularInline):
+    model = Contact
+    fk_name = "data_source"
+    extra = 0
+    exclude = ("organization", "telecom_operator")
     autocomplete_fields = ("created_by", "updated_by")
 
 
@@ -73,7 +86,13 @@ class TelecomOperatorCommentInline(admin.TabularInline):
 class TelecomOperatorLicenseInline(admin.TabularInline):
     model = TelecomOperatorLicense
     extra = 0
-    autocomplete_fields = ("created_by", "updated_by")
+    autocomplete_fields = ("telecom_network", "created_by", "updated_by")
+
+
+class TelecomNetworkInline(admin.TabularInline):
+    model = TelecomNetwork
+    extra = 0
+    autocomplete_fields = ("name", "created_by", "updated_by")
 
 
 class LicenseOrderInline(admin.TabularInline):
@@ -99,7 +118,7 @@ class OriAdmin(admin.ModelAdmin):
         "responsible_person",
         "in_registry",
     )
-    list_filter = ("outsourcing", "industry", "responsible_person")
+    list_filter = ("is_archived", "outsourcing", "industry", "responsible_person")
     search_fields = ("name", "inn", "case_number", "responsible_person__username", "responsible_person__first_name", "responsible_person__last_name")
     autocomplete_fields = (
         "industry",
@@ -121,9 +140,10 @@ class DataSourceAdmin(admin.ModelAdmin):
         "responsible_person",
         "industry",
     )
-    list_filter = ("industry", "responsible_person")
+    list_filter = ("is_archived", "industry", "responsible_person")
     search_fields = ("name", "inn", "case_number", "responsible_person__username", "responsible_person__first_name", "responsible_person__last_name")
     autocomplete_fields = ("industry",)
+    inlines = (DataSourceContactInline,)
 
     def save_model(self, request, obj, form, change):
         super().save_model(request, obj, form, change)
@@ -138,7 +158,7 @@ class TelecomOperatorAdmin(admin.ModelAdmin):
         "responsible_person",
         "updated_at",
     )
-    list_filter = ("responsible_person",)
+    list_filter = ("is_archived", "responsible_person")
     search_fields = (
         "name",
         "inn",
@@ -157,6 +177,7 @@ class TelecomOperatorAdmin(admin.ModelAdmin):
         TelecomOperatorContactInline,
         TelecomOperatorCommentInline,
         TelecomOperatorLicenseInline,
+        TelecomNetworkInline,
     )
 
     def save_model(self, request, obj, form, change):
@@ -181,36 +202,62 @@ class TelecomOperatorAuditEventAdmin(admin.ModelAdmin):
         return False
 
 
+@admin.register(TelecomNetwork)
+class TelecomNetworkAdmin(admin.ModelAdmin):
+    list_display = ("name", "telecom_operator", "comment", "orders_count", "licenses_count", "updated_at")
+    list_filter = ("telecom_operator", "name")
+    search_fields = ("name__name", "name__alias", "telecom_operator__name", "telecom_operator__inn")
+    readonly_fields = ("created_at", "updated_at")
+    autocomplete_fields = ("name", "telecom_operator", "created_by", "updated_by")
+    inlines = (LicenseOrderInline,)
+
+    def get_queryset(self, request):
+        return (
+            super()
+            .get_queryset(request)
+            .annotate(_orders_count=Count("orders"), _licenses_count=Count("licenses"))
+        )
+
+    @admin.display(description="Приказы")
+    def orders_count(self, obj):
+        return getattr(obj, "_orders_count", obj.orders.count())
+
+    @admin.display(description="Лицензии")
+    def licenses_count(self, obj):
+        return getattr(obj, "_licenses_count", obj.licenses.count())
+
+
 @admin.register(TelecomOperatorLicense)
 class TelecomOperatorLicenseAdmin(admin.ModelAdmin):
     list_display = (
         "title",
         "telecom_operator",
+        "telecom_network",
         "number",
         "status",
         "start_date",
         "end_date",
         "updated_at",
     )
-    list_filter = ("status", "telecom_operator")
-    search_fields = ("title", "number", "territory", "telecom_operator__name")
+    list_filter = ("status", "telecom_operator", "telecom_network")
+    search_fields = ("title", "number", "territory", "telecom_operator__name", "telecom_network__name__name")
     readonly_fields = ("created_at", "updated_at")
-    autocomplete_fields = ("telecom_operator", "created_by", "updated_by")
-    inlines = (LicenseOrderInline,)
+    autocomplete_fields = ("telecom_operator", "telecom_network", "created_by", "updated_by")
 
 
 @admin.register(LicenseOrder)
 class LicenseOrderAdmin(admin.ModelAdmin):
-    list_display = ("license", "order_number", "orm_vendor", "psis_count", "updated_at")
+    list_display = ("telecom_operator", "telecom_network", "order_number", "orm_vendor", "psis_count", "updated_at")
     search_fields = (
-        "license__title",
-        "license__telecom_operator__name",
+        "telecom_operator__name",
+        "telecom_network__name__name",
         "order_number__name",
     )
-    list_filter = ("orm_vendor", "order_number")
+    list_filter = ("orm_vendor", "order_number", "telecom_operator", "telecom_network")
     readonly_fields = ("created_at", "updated_at")
     autocomplete_fields = (
-        "license",
+        "telecom_operator",
+        "telecom_network",
         "order_number",
         "orm_vendor",
         "created_by",
@@ -228,16 +275,17 @@ class LicenseOrderAdmin(admin.ModelAdmin):
 
 @admin.register(Contact)
 class ContactAdmin(admin.ModelAdmin):
-    list_display = ("organization", "telecom_operator", "first_name", "phone", "email", "updated_at")
+    list_display = ("organization", "telecom_operator", "data_source", "first_name", "phone", "email", "updated_at")
     search_fields = (
         "organization__name",
         "telecom_operator__name",
+        "data_source__name",
         "first_name",
         "phone",
         "email",
     )
-    list_filter = ("organization", "telecom_operator")
-    autocomplete_fields = ("organization", "telecom_operator", "created_by", "updated_by")
+    list_filter = ("organization", "telecom_operator", "data_source")
+    autocomplete_fields = ("organization", "telecom_operator", "data_source", "created_by", "updated_by")
 
 
 @admin.register(Comment)
@@ -266,12 +314,12 @@ class EventAdmin(admin.ModelAdmin):
     )
 
 
-@admin.register(InteractionObjectType)
 @admin.register(EventType)
 @admin.register(EventStatus)
 @admin.register(Industry)
 @admin.register(OrmVendor)
 @admin.register(LicenseOrderNumber)
+@admin.register(TelecomNetworkName)
 class ReferenceAdmin(admin.ModelAdmin):
     list_display = ("name", "alias", "is_active")
     list_filter = ("is_active",)
@@ -338,8 +386,8 @@ class PsiAdmin(admin.ModelAdmin):
     list_filter = ("status", "responsible")
     search_fields = (
         "organization__name",
-        "license_order__license__title",
-        "license_order__license__telecom_operator__name",
+        "license_order__telecom_network__name__name",
+        "license_order__telecom_network__telecom_operator__name",
         "comment",
     )
     autocomplete_fields = ("organization", "license_order", "responsible", "created_by", "updated_by")
@@ -349,10 +397,55 @@ class PsiAdmin(admin.ModelAdmin):
         return dict(PsiWorkflowStatus.choices).get(obj.status, obj.status)
 
 
+@admin.register(EntityStatus)
+class EntityStatusAdmin(admin.ModelAdmin):
+    list_display = ("text", "kind_display", "links_count")
+    list_filter = ("kind",)
+    search_fields = ("text",)
+
+    @admin.display(description="Тип")
+    def kind_display(self, obj):
+        return obj.get_kind_display()
+
+    @admin.display(description="Привязок")
+    def links_count(self, obj):
+        return obj.links.count()
+
+
+@admin.register(EntityStatusLink)
+class EntityStatusLinkAdmin(admin.ModelAdmin):
+    list_display = ("status", "organization", "telecom_operator", "data_source", "entity_display")
+    list_filter = ("status__kind",)
+    search_fields = (
+        "status__text",
+        "organization__name",
+        "telecom_operator__name",
+        "data_source__name",
+    )
+    autocomplete_fields = ("status", "organization", "telecom_operator", "data_source")
+
+    @admin.display(description="Организация")
+    def entity_display(self, obj):
+        entity = obj.entity
+        return str(entity) if entity is not None else "—"
+
+
+@admin.register(AppSettings)
+class AppSettingsAdmin(admin.ModelAdmin):
+    list_display = ("responsibility_region",)
+
+    def has_add_permission(self, request):
+        return not AppSettings.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
 # --- Группировка моделей CRM в админке (главная и /admin/crm/) ---
 
 _CRM_ORI_MODELS = (
     "Ori",
+    "Industry",
 )
 _CRM_DATA_SOURCE_MODELS = (
     "DataSource",
@@ -360,15 +453,22 @@ _CRM_DATA_SOURCE_MODELS = (
 _CRM_TELECOM_MODELS = (
     "TelecomOperator",
     "TelecomOperatorAuditEvent",
+    "TelecomNetwork",
+    "TelecomNetworkName",
     "TelecomOperatorLicense",
     "LicenseOrder",
     "LicenseOrderNumber",
 )
 _CRM_COMMON_MODELS = (
+    "AppSettings",
     "OrmVendor",
     "ActionTemplate",
     "OrgAction",
     "Psi",
+    "Contact",
+    "Comment",
+    "EntityStatus",
+    "EntityStatusLink",
 )
 
 

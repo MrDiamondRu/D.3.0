@@ -3,10 +3,13 @@ from django.contrib.auth import get_user_model
 
 from apps.crm.favicon_fetch import maybe_assign_favicon_from_sites
 from apps.crm.models import (
+    AppSettings,
     DataSource,
     Ori,
     TelecomOperator,
     TelecomOperatorLicense,
+    TelecomNetwork,
+    TelecomNetworkName,
     LicenseOrder,
     LicenseOrderNumber,
     OrmVendor,
@@ -52,7 +55,6 @@ class OriForm(forms.ModelForm):
             "responsible_person",
             "outsourcing",
             "in_registry",
-            "registry_record_url",
             "sites_text",
             "correspondence_address",
             "industry",
@@ -66,7 +68,6 @@ class OriForm(forms.ModelForm):
             "case_number": forms.TextInput(attrs={"class": "panel-input"}),
             "outsourcing": forms.CheckboxInput(attrs={"class": "panel-checkbox"}),
             "in_registry": forms.TextInput(attrs={"class": "panel-input"}),
-            "registry_record_url": forms.URLInput(attrs={"class": "panel-input"}),
             "correspondence_address": forms.Textarea(attrs={"class": "panel-input panel-textarea", "rows": 4}),
             "industry": forms.Select(attrs={"class": "panel-input"}),
             "orm_vendor": forms.Select(attrs={"class": "panel-input"}),
@@ -264,7 +265,7 @@ class TelecomOperatorForm(forms.ModelForm):
 class TelecomOperatorLicenseForm(forms.ModelForm):
     class Meta:
         model = TelecomOperatorLicense
-        fields = ["title", "number", "status", "start_date", "end_date", "territory"]
+        fields = ["telecom_network", "title", "number", "status", "start_date", "end_date", "territory"]
         widgets = {
             "title": forms.TextInput(attrs={"class": "panel-input"}),
             "number": forms.TextInput(attrs={"class": "panel-input"}),
@@ -272,12 +273,50 @@ class TelecomOperatorLicenseForm(forms.ModelForm):
             "start_date": forms.DateInput(format="%Y-%m-%d", attrs={"class": "panel-input", "type": "date"}),
             "end_date": forms.DateInput(format="%Y-%m-%d", attrs={"class": "panel-input", "type": "date"}),
             "territory": forms.Textarea(attrs={"class": "panel-input panel-textarea", "rows": 3}),
+            "telecom_network": forms.Select(attrs={"class": "panel-input"}),
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["start_date"].input_formats = ["%Y-%m-%d"]
         self.fields["end_date"].input_formats = ["%Y-%m-%d"]
+        networks = TelecomNetwork.objects.select_related("name").order_by("name__name")
+        if self.instance and self.instance.pk and self.instance.telecom_operator_id:
+            networks = networks.filter(telecom_operator_id=self.instance.telecom_operator_id)
+        self.fields["telecom_network"].queryset = networks
+        self.fields["telecom_network"].empty_label = "Не выбрана"
+
+
+class TelecomNetworkForm(forms.ModelForm):
+    class Meta:
+        model = TelecomNetwork
+        fields = ["name", "comment"]
+        labels = {
+            "name": "Наименование сети связи",
+            "comment": "Комментарий",
+        }
+        widgets = {
+            "name": forms.Select(attrs={"class": "panel-input"}),
+            "comment": forms.Textarea(attrs={"class": "panel-input panel-textarea", "rows": 3}),
+        }
+
+    def __init__(self, *args, telecom_operator=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.telecom_operator = telecom_operator
+        self.fields["name"].queryset = TelecomNetworkName.objects.filter(is_active=True).order_by("name")
+        self.fields["name"].required = True
+
+
+class TelecomNetworkEditForm(forms.ModelForm):
+    class Meta:
+        model = TelecomNetwork
+        fields = ["comment"]
+        labels = {
+            "comment": "Комментарий",
+        }
+        widgets = {
+            "comment": forms.Textarea(attrs={"class": "panel-input panel-textarea", "rows": 3}),
+        }
 
 
 class PsiAssignmentForm(forms.ModelForm):
@@ -378,3 +417,26 @@ class LicenseOrderForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields["order_number"].queryset = LicenseOrderNumber.objects.filter(is_active=True).order_by("name")
         self.fields["orm_vendor"].queryset = OrmVendor.objects.filter(is_active=True).order_by("name")
+
+
+class AppSettingsForm(forms.ModelForm):
+    class Meta:
+        model = AppSettings
+        fields = ["responsibility_region"]
+        labels = {
+            "responsibility_region": "Регион ответственности",
+        }
+        widgets = {
+            "responsibility_region": forms.TextInput(
+                attrs={
+                    "class": "panel-input",
+                    "placeholder": "Краснодарский край",
+                }
+            ),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["responsibility_region"].help_text = (
+            "Субъект РФ из отчётов РКН, по которому отбираются операторы связи при импорте."
+        )
