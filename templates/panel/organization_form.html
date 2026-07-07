@@ -46,7 +46,6 @@
         {% include "panel/includes/panel_form_field.html" with field=form.correspondence_address full_width=True %}
 
         {% include "panel/includes/panel_form_field.html" with field=form.in_registry %}
-        {% include "panel/includes/panel_form_field.html" with field=form.registry_record_url %}
 
         {% include "panel/includes/panel_form_field.html" with field=form.orm_vendor full_width=True %}
 
@@ -57,6 +56,11 @@
       </div>
 
       <div class="panel-form-actions">
+        {% if object %}
+          <button class="panel-btn panel-btn-secondary" type="submit" name="action" value="toggle_archive">
+            {{ archive_toggle_label }}
+          </button>
+        {% endif %}
         <button class="panel-btn panel-btn-primary" type="submit">{{ submit_label }}</button>
       </div>
     </form>

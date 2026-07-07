@@ -7,7 +7,7 @@
     {% for comment in entity_comments %}
       <article class="panel-chat-message{% if comment.author_id == request.user.id %} panel-chat-message-own{% endif %}">
         <div class="panel-chat-message-meta">
-          <span class="panel-chat-author">{{ comment.author }}</span>
+          <span class="panel-chat-author">{{ comment.author.get_full_name|default:comment.author.username }}</span>
           <time>{{ comment.commented_at|date:"d.m.Y H:i" }}</time>
         </div>
         <div class="panel-chat-bubble">{{ comment.text|linebreaksbr }}</div>

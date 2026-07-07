@@ -6,10 +6,14 @@
   <section class="panel-toolbar">
     <div class="panel-toolbar-title">
       <h1>{{ form_title }}</h1>
-      <p>Редактирование данных оператора связи</p>
+      <p>{% if telecom_operator %}Редактирование данных оператора связи{% else %}Заполните основные данные оператора связи{% endif %}</p>
     </div>
     <div class="panel-toolbar-actions">
-      <a class="panel-btn panel-btn-secondary" href="{% url 'panel:telecom_operator_detail' telecom_operator.pk %}">Отмена</a>
+      {% if telecom_operator %}
+        <a class="panel-btn panel-btn-secondary" href="{% url 'panel:telecom_operator_detail' telecom_operator.pk %}">Отмена</a>
+      {% else %}
+        <a class="panel-btn panel-btn-secondary" href="{% url 'panel:telecom_operator_list' %}">Отмена</a>
+      {% endif %}
     </div>
   </section>
 
@@ -61,7 +65,7 @@
             <span class="panel-form-label">{{ icon_field.label }}</span>
             <div class="panel-icon-field-actions">
               <input type="file" name="{{ icon_field.html_name }}" id="{{ icon_field.auto_id }}" class="panel-icon-native-input">
-              <label for="{{ icon_field.auto_id }}" class="panel-btn panel-btn-secondary">Изменить</label>
+              <label for="{{ icon_field.auto_id }}" class="panel-btn panel-btn-secondary">{% if icon_field.value %}Изменить{% else %}Выбрать{% endif %}</label>
               {% if icon_field.value %}
                 <label class="panel-btn panel-btn-secondary panel-icon-clear-btn">
                   <input type="checkbox" name="{{ icon_field.html_name }}-clear" id="{{ icon_field.auto_id }}_clear">
@@ -77,6 +81,11 @@
       </div>
 
       <div class="panel-form-actions">
+        {% if telecom_operator %}
+          <button class="panel-btn panel-btn-secondary" type="submit" name="action" value="toggle_archive">
+            {{ archive_toggle_label }}
+          </button>
+        {% endif %}
         <button class="panel-btn panel-btn-primary" type="submit">{{ submit_label }}</button>
       </div>
     </form>

@@ -1,0 +1,9 @@
+<article class="panel-organization-card" data-href="{{ detail_url }}">
+  {% include "panel/includes/card_base.html" with item=item use_org_type_icon=False fallback_icon_url="" show_ori_meta=True %}
+  {% include "panel/includes/organization_list_extra.html" %}
+  {% if item.org_actions.all %}
+    <div class="panel-organization-extra panel-organization-extra-progress">
+      {% include "panel/includes/entity_action_progress.html" with actions=item.org_actions.all %}
+    </div>
+  {% endif %}
+</article>

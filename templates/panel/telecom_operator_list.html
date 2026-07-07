@@ -12,18 +12,25 @@
         class="panel-input panel-input-compact panel-search-compact"
         placeholder="Поиск..."
       >
+      <select name="archive" class="panel-input panel-select">
+        <option value="active" {% if selected_archive == "active" %}selected{% endif %}>Активные</option>
+        <option value="archived" {% if selected_archive == "archived" %}selected{% endif %}>Архив</option>
+        <option value="all" {% if selected_archive == "all" %}selected{% endif %}>Все</option>
+      </select>
       <button class="panel-btn panel-btn-secondary" type="submit">Найти</button>
       <a class="panel-btn panel-btn-secondary" href="{% url 'panel:telecom_operator_list' %}">Сброс</a>
     </form>
+    <div class="panel-toolbar-actions">
+      <button type="button" class="panel-btn panel-btn-secondary" data-telecom-import-open>Импорт</button>
+      <a class="panel-btn panel-btn-primary" href="{% url 'panel:telecom_operator_add' %}">Добавить ОС</a>
+    </div>
   </section>
 
   <section class="panel-card">
     <div class="panel-organization-cards">
       {% for operator in telecom_operators %}
-        <article class="panel-organization-card" data-href="{% url 'panel:telecom_operator_detail' operator.pk %}">
-          {% include "panel/includes/card_base.html" with item=operator type_label="Оператор связи" use_org_type_icon=False fallback_icon_url="" %}
-          <div class="panel-organization-extra"></div>
-        </article>
+        {% url 'panel:telecom_operator_detail' operator.pk as detail_url %}
+        {% include "panel/includes/organization_list_card.html" with item=operator detail_url=detail_url list_card_kind="telecom" %}
       {% empty %}
         <div class="panel-empty">Операторы связи не найдены.</div>
       {% endfor %}
@@ -33,23 +40,216 @@
   {% if is_paginated %}
     <nav class="panel-pagination">
       {% if page_obj.has_previous %}
-        <a class="panel-btn panel-btn-secondary" href="?q={{ search_query|urlencode }}&page={{ page_obj.previous_page_number }}">Назад</a>
+        <a class="panel-btn panel-btn-secondary" href="?q={{ search_query|urlencode }}&archive={{ selected_archive }}&page={{ page_obj.previous_page_number }}">Назад</a>
       {% endif %}
       <span class="panel-pagination-info">Страница {{ page_obj.number }} из {{ page_obj.paginator.num_pages }}</span>
       {% if page_obj.has_next %}
-        <a class="panel-btn panel-btn-secondary" href="?q={{ search_query|urlencode }}&page={{ page_obj.next_page_number }}">Вперед</a>
+        <a class="panel-btn panel-btn-secondary" href="?q={{ search_query|urlencode }}&archive={{ selected_archive }}&page={{ page_obj.next_page_number }}">Вперед</a>
       {% endif %}
     </nav>
   {% endif %}
 
+  <div class="panel-modal-backdrop" data-telecom-import-modal hidden>
+    <div class="panel-modal-card panel-modal-card-wide" role="dialog" aria-modal="true" aria-label="Импорт операторов связи">
+      <div class="panel-modal-head">
+        <h3>Импорт из отчётов РКН</h3>
+        <button type="button" class="panel-modal-close" data-telecom-import-close aria-label="Закрыть">✕</button>
+      </div>
+
+      <div class="panel-import-stage" data-telecom-import-stage-select>
+        <p class="panel-modal-text">
+          Выберите один или несколько файлов отчётов в формате .docx.
+        </p>
+        <label class="panel-import-file-field">
+          <span class="panel-btn panel-btn-secondary">Выбрать файлы</span>
+          <input
+            type="file"
+            class="panel-import-file-input"
+            data-telecom-import-input
+            accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            multiple
+          >
+        </label>
+        <div class="panel-modal-actions">
+          <button type="button" class="panel-btn panel-btn-secondary" data-telecom-import-close>Отмена</button>
+          <button type="button" class="panel-btn panel-btn-primary" data-telecom-import-start disabled>Импортировать</button>
+        </div>
+      </div>
+
+      <div class="panel-import-stage" data-telecom-import-stage-progress hidden>
+        <p class="panel-modal-text" data-telecom-import-progress-label>Обработка файлов…</p>
+        <div class="panel-import-progress" aria-hidden="true">
+          <div class="panel-import-progress-bar" data-telecom-import-progress-bar></div>
+        </div>
+        <p class="panel-import-progress-meta" data-telecom-import-progress-meta></p>
+      </div>
+
+      <div class="panel-import-stage" data-telecom-import-stage-result hidden>
+        <div class="panel-import-result-list">
+          <p>
+            Количество отчётов, не относящихся к региону ответственности:
+            <strong data-telecom-import-stat-region>0</strong>
+          </p>
+          <p>
+            Количество отчётов по уже зарегистрированным операторам связи:
+            <strong data-telecom-import-stat-duplicate>0</strong>
+          </p>
+          <p>
+            Количество зарегистрированных отчётов:
+            <strong data-telecom-import-stat-registered>0</strong>
+          </p>
+        </div>
+        <p class="panel-import-error-note" data-telecom-import-error-note hidden></p>
+        <div class="panel-modal-actions">
+          <button type="button" class="panel-btn panel-btn-secondary" data-telecom-import-close>Закрыть</button>
+          <button type="button" class="panel-btn panel-btn-primary" data-telecom-import-retry>Импортировать ещё</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script>
-    document.querySelectorAll(".panel-organization-card").forEach(function (card) {
-      card.addEventListener("click", function () {
-        const url = card.dataset.href;
-        if (url) {
-          window.location.href = url;
+    (function () {
+      const importUrl = "{% url 'panel:telecom_operator_import' %}";
+      const csrfToken = "{{ csrf_token }}";
+      const modal = document.querySelector("[data-telecom-import-modal]");
+      const openButtons = document.querySelectorAll("[data-telecom-import-open]");
+      const closeButtons = document.querySelectorAll("[data-telecom-import-close]");
+      const fileInput = document.querySelector("[data-telecom-import-input]");
+      const startButton = document.querySelector("[data-telecom-import-start]");
+      const retryButton = document.querySelector("[data-telecom-import-retry]");
+      const stageSelect = document.querySelector("[data-telecom-import-stage-select]");
+      const stageProgress = document.querySelector("[data-telecom-import-stage-progress]");
+      const stageResult = document.querySelector("[data-telecom-import-stage-result]");
+      const progressBar = document.querySelector("[data-telecom-import-progress-bar]");
+      const progressMeta = document.querySelector("[data-telecom-import-progress-meta]");
+      const statRegion = document.querySelector("[data-telecom-import-stat-region]");
+      const statDuplicate = document.querySelector("[data-telecom-import-stat-duplicate]");
+      const statRegistered = document.querySelector("[data-telecom-import-stat-registered]");
+      const errorNote = document.querySelector("[data-telecom-import-error-note]");
+
+      let selectedFiles = [];
+
+      function showStage(stage) {
+        stageSelect.hidden = stage !== "select";
+        stageProgress.hidden = stage !== "progress";
+        stageResult.hidden = stage !== "result";
+      }
+
+      function resetModal() {
+        selectedFiles = [];
+        fileInput.value = "";
+        startButton.disabled = true;
+        errorNote.hidden = true;
+        errorNote.textContent = "";
+        statRegion.textContent = "0";
+        statDuplicate.textContent = "0";
+        statRegistered.textContent = "0";
+        progressBar.style.width = "0%";
+        progressMeta.textContent = "";
+        showStage("select");
+      }
+
+      function openModal() {
+        resetModal();
+        modal.hidden = false;
+      }
+
+      function closeModal() {
+        modal.hidden = true;
+      }
+
+      function updateStartButton(files) {
+        startButton.disabled = !files.length;
+      }
+
+      async function uploadFile(file) {
+        const formData = new FormData();
+        formData.append("file", file);
+        const response = await fetch(importUrl, {
+          method: "POST",
+          headers: {
+            "X-CSRFToken": csrfToken,
+          },
+          body: formData,
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.error || "Не удалось загрузить файл");
+        }
+        return payload;
+      }
+
+      async function runImport() {
+        if (!selectedFiles.length) {
+          return;
+        }
+        showStage("progress");
+        const totals = {
+          wrong_region: 0,
+          duplicate_inn: 0,
+          registered: 0,
+          parse_error: 0,
+        };
+        const totalFiles = selectedFiles.length;
+
+        for (let index = 0; index < totalFiles; index += 1) {
+          const file = selectedFiles[index];
+          progressMeta.textContent = "Файл " + (index + 1) + " из " + totalFiles + ": " + file.name;
+          try {
+            const result = await uploadFile(file);
+            if (result.outcome === "wrong_region") {
+              totals.wrong_region += 1;
+            } else if (result.outcome === "duplicate_inn") {
+              totals.duplicate_inn += 1;
+            } else if (result.outcome === "registered") {
+              totals.registered += 1;
+            } else {
+              totals.parse_error += 1;
+            }
+          } catch (error) {
+            totals.parse_error += 1;
+          }
+          progressBar.style.width = String(Math.round(((index + 1) / totalFiles) * 100)) + "%";
+        }
+
+        statRegion.textContent = String(totals.wrong_region);
+        statDuplicate.textContent = String(totals.duplicate_inn);
+        statRegistered.textContent = String(totals.registered);
+        if (totals.parse_error > 0) {
+          errorNote.hidden = false;
+          errorNote.textContent =
+            "Не удалось обработать файлов: " + totals.parse_error + ".";
+        }
+        showStage("result");
+      }
+
+      openButtons.forEach(function (button) {
+        button.addEventListener("click", openModal);
+      });
+      closeButtons.forEach(function (button) {
+        button.addEventListener("click", closeModal);
+      });
+      modal.addEventListener("click", function (event) {
+        if (event.target === modal) {
+          closeModal();
         }
       });
-    });
+      fileInput.addEventListener("change", function () {
+        selectedFiles = Array.from(fileInput.files || []);
+        updateStartButton(selectedFiles);
+      });
+      startButton.addEventListener("click", runImport);
+      retryButton.addEventListener("click", resetModal);
+
+      document.querySelectorAll(".panel-organization-card").forEach(function (card) {
+        card.addEventListener("click", function () {
+          const url = card.dataset.href;
+          if (url) {
+            window.location.href = url;
+          }
+        });
+      });
+    })();
   </script>
 {% endblock %}

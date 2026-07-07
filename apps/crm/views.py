@@ -1,34 +1,43 @@
 from django.contrib import messages
 from django.contrib.auth.views import LoginView, LogoutView
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.db import IntegrityError, transaction
 from django.db.models import F, Prefetch, Q
-from django.http import HttpResponseRedirect
+from django.http import HttpResponseRedirect, JsonResponse
 from django.utils import timezone
 from datetime import date
 from django.urls import reverse, reverse_lazy
+from django.views import View
 from django.views.generic import CreateView, DetailView, ListView, RedirectView, TemplateView, UpdateView
 
 from apps.crm.forms import (
+    AppSettingsForm,
     DataSourceForm,
     OriForm,
     TelecomOperatorForm,
     TelecomOperatorLicenseForm,
+    TelecomNetworkForm,
+    TelecomNetworkEditForm,
     LicenseOrderForm,
     OrgActionCreateForm,
     OrgActionEditForm,
     PsiAssignmentForm,
 )
 from apps.crm.models import (
+    AppSettings,
     Contact,
     DataSource,
+    Event,
     Ori,
     Comment,
     ActionTemplate,
     OrgAction,
     OrgActionStatus,
     Psi,
+    LicenseOrder,
     TelecomOperatorLicense,
     TelecomOperator,
+    TelecomNetwork,
     TelecomOperatorAuditEvent,
 )
 from apps.crm.action_template_utils import (
@@ -41,10 +50,138 @@ from apps.crm.psi_utils import (
     build_psi_history_payload,
     partition_psis,
 )
+from apps.crm.organization_list_utils import (
+    annotate_data_source_list,
+    annotate_ori_list,
+    annotate_telecom_list,
+    org_actions_prefetch,
+    status_links_prefetch,
+)
 from apps.crm.rkn_licenses import RknSyncError, sync_telecom_operator_licenses_from_rkn
+from apps.crm.telecom_operator_import import import_telecom_operator_from_docx
 
 
 TELECOM_OPERATOR_MENU_LABEL = "Операторы связи"
+
+
+def _operator_licenses_url(operator_pk: int) -> str:
+    return f"{reverse('panel:telecom_operator_detail', kwargs={'pk': operator_pk})}?tab=licenses"
+
+
+def _orders_qs_for_network(network: TelecomNetwork):
+    return LicenseOrder.objects.filter(telecom_network_id=network.pk)
+
+
+def _psi_scope_for_network(network: TelecomNetwork) -> Q:
+    return Q(license_order__telecom_network_id=network.pk)
+
+
+def _populate_orders_psi_context(orders_qs) -> dict:
+    orders = list(
+        orders_qs.select_related("order_number", "orm_vendor", "telecom_network", "telecom_operator")
+        .prefetch_related(
+            Prefetch(
+                "psis",
+                queryset=Psi.objects.select_related("responsible", "created_by").order_by("-assigned_date", "-pk"),
+            )
+        )
+        .order_by("pk")
+    )
+    order_number_ids = {order.order_number_id for order in orders if order.order_number_id}
+    busy_ranges_by_order_number = {}
+    if order_number_ids:
+        related_psis = (
+            Psi.objects.select_related(
+                "license_order__order_number",
+                "license_order__telecom_network__telecom_operator",
+                "license_order__telecom_operator",
+            )
+            .filter(license_order__order_number_id__in=order_number_ids)
+            .exclude(start_date__isnull=True, end_date__isnull=True)
+        )
+        for psi in related_psis:
+            start_date = psi.start_date or psi.end_date
+            end_date = psi.end_date or psi.start_date
+            if not start_date or not end_date:
+                continue
+            if end_date < start_date:
+                start_date, end_date = end_date, start_date
+            operator_name = "—"
+            if psi.license_order_id:
+                order = psi.license_order
+                if order.telecom_network_id:
+                    operator_name = order.telecom_network.telecom_operator.name
+                elif order.telecom_operator_id:
+                    operator_name = order.telecom_operator.name
+            busy_ranges_by_order_number.setdefault(psi.license_order.order_number_id, []).append(
+                {
+                    "start": start_date.isoformat(),
+                    "end": end_date.isoformat(),
+                    "operator_name": operator_name,
+                }
+            )
+    busy_ranges_by_order = {}
+    history_payload_by_order = {}
+    for order in orders:
+        all_psis = list(order.psis.all())
+        all_psis.sort(
+            key=lambda psi: (
+                psi.end_date is None,
+                -(psi.end_date.toordinal() if psi.end_date else date.min.toordinal()),
+                -psi.pk,
+            )
+        )
+        active_statuses = {"assigned", "overdue", "in_progress"}
+        visible_psis = [psi for psi in all_psis if psi.status in active_statuses]
+        latest_success = next((psi for psi in all_psis if psi.status == "successful"), None)
+        latest_failed = next((psi for psi in all_psis if psi.status == "failed"), None)
+        for candidate in (latest_success, latest_failed):
+            if candidate and candidate not in visible_psis:
+                visible_psis.append(candidate)
+        order.linked_psis = visible_psis
+        order.history_psis = [psi for psi in all_psis if psi not in visible_psis]
+        history_payload_by_order[str(order.pk)] = [
+            {
+                "id": psi.pk,
+                "status": psi.get_status_display(),
+                "status_value": psi.status,
+                "responsible": str(psi.responsible) if psi.responsible_id else "—",
+                "responsible_id": psi.responsible_id or "",
+                "start_date": psi.start_date.strftime("%d.%m.%Y") if psi.start_date else "—",
+                "start_iso": psi.start_date.isoformat() if psi.start_date else "",
+                "end_date": psi.end_date.strftime("%d.%m.%Y") if psi.end_date else "—",
+                "end_iso": psi.end_date.isoformat() if psi.end_date else "",
+                "created_by": (
+                    psi.created_by.get_full_name().strip() or psi.created_by.username
+                    if psi.created_by_id
+                    else "—"
+                ),
+                "created_at": psi.created_at.strftime("%d.%m.%Y %H:%M") if psi.created_at else "—",
+                "order_id": order.pk,
+                "order_name": order.order_number.name,
+            }
+            for psi in order.history_psis
+        ]
+        busy_ranges_by_order[str(order.pk)] = busy_ranges_by_order_number.get(order.order_number_id, [])
+        today = timezone.localdate()
+        for psi in all_psis:
+            if psi.end_date:
+                delta_days = (psi.end_date - today).days
+                if delta_days > 0:
+                    psi.schedule_hint = f"до завершения {delta_days} дн."
+                elif delta_days == 0:
+                    psi.schedule_hint = "завершается сегодня"
+                else:
+                    psi.schedule_hint = f"просрочено на {abs(delta_days)} дн."
+            elif psi.start_date and psi.start_date > today:
+                psi.schedule_hint = f"старт через {(psi.start_date - today).days} дн."
+            else:
+                psi.schedule_hint = "сроки не заданы"
+    return {
+        "network_orders": orders,
+        "psi_busy_ranges_by_order": busy_ranges_by_order,
+        "psi_history_by_order": history_payload_by_order,
+    }
 
 
 def _panel_nav_state(request) -> dict:
@@ -53,15 +190,18 @@ def _panel_nav_state(request) -> dict:
     data_sources_url = reverse("panel:data_source_list")
     telecom_operators_url = reverse("panel:telecom_operator_list")
     telecom_licenses_prefix = reverse("panel:telecom_license_detail", kwargs={"pk": 1}).rsplit("/", 2)[0]
+    telecom_networks_prefix = reverse("panel:telecom_network_detail", kwargs={"pk": 1}).rsplit("/", 2)[0]
     implementation_url = reverse("panel:implementation")
     calendar_url = reverse("panel:calendar")
     statistics_url = reverse("panel:statistics")
     contacts_url = reverse("panel:contacts")
     mailings_url = reverse("panel:mailings")
+    settings_url = reverse("panel:app_settings")
 
     ori_base = ori_url.rstrip("/")
     data_sources_base = data_sources_url.rstrip("/")
     telecom_base = telecom_operators_url.rstrip("/")
+    settings_base = settings_url.rstrip("/")
     mine_param = request.GET.get("mine", "")
 
     is_ori_list = current_path == ori_base
@@ -73,6 +213,7 @@ def _panel_nav_state(request) -> dict:
         current_path == telecom_base
         or current_path.startswith(f"{telecom_base}/")
         or current_path.startswith(telecom_licenses_prefix)
+        or current_path.startswith(telecom_networks_prefix)
     )
 
     return {
@@ -90,6 +231,8 @@ def _panel_nav_state(request) -> dict:
         "statistics_url": statistics_url,
         "contacts_url": contacts_url,
         "mailings_url": mailings_url,
+        "settings_url": settings_url,
+        "is_settings_section": current_path == settings_base,
     }
 
 
@@ -113,6 +256,8 @@ def _panel_section_title(nav: dict) -> str:
         return "Контакты"
     if current_path.startswith(nav["mailings_url"].rstrip("/")):
         return "Рассылки"
+    if nav["is_settings_section"]:
+        return "Настройки приложения"
     if current_path.startswith("/admin"):
         return "Администрирование"
     return ""
@@ -122,6 +267,83 @@ def _is_truthy_mine(value) -> bool:
     if value is None:
         return False
     return str(value).strip().lower() in ("1", "true", "yes", "on")
+
+
+def _archive_filter_value(request) -> str:
+    value = request.GET.get("archive", "").strip().lower()
+    if value in {"archived", "all"}:
+        return value
+    return "active"
+
+
+def _apply_archive_filter(queryset, archive_filter: str):
+    if archive_filter == "archived":
+        return queryset.filter(is_archived=True)
+    if archive_filter == "all":
+        return queryset
+    return queryset.filter(is_archived=False)
+
+
+def _transfer_ori_to_data_source(source: Ori) -> DataSource:
+    target = DataSource.objects.create(
+        icon=source.icon.name if source.icon else None,
+        name=source.name,
+        is_archived=source.is_archived,
+        inn=source.inn,
+        case_number=source.case_number,
+        responsible_person=source.responsible_person,
+        sites=list(source.sites or []),
+        correspondence_address=source.correspondence_address,
+        industry=source.industry,
+    )
+
+    Contact.objects.filter(organization=source).update(
+        organization=None,
+        data_source=target,
+    )
+    Comment.objects.filter(organization=source).update(
+        organization=None,
+        data_source=target,
+    )
+    OrgAction.objects.filter(organization=source).update(
+        organization=None,
+        data_source=target,
+    )
+
+    Event.objects.filter(organization=source).delete()
+    Psi.objects.filter(organization=source).delete()
+    source.delete()
+    return target
+
+
+def _transfer_data_source_to_ori(source: DataSource) -> Ori:
+    target = Ori.objects.create(
+        icon=source.icon.name if source.icon else None,
+        name=source.name,
+        is_archived=source.is_archived,
+        inn=source.inn,
+        case_number=source.case_number,
+        responsible_person=source.responsible_person,
+        sites=list(source.sites or []),
+        correspondence_address=source.correspondence_address,
+        industry=source.industry,
+    )
+
+    Contact.objects.filter(data_source=source).update(
+        data_source=None,
+        organization=target,
+    )
+    Comment.objects.filter(data_source=source).update(
+        data_source=None,
+        organization=target,
+    )
+    OrgAction.objects.filter(data_source=source).update(
+        data_source=None,
+        organization=target,
+    )
+
+    source.delete()
+    return target
 
 
 class PanelMenuMixin:
@@ -189,6 +411,11 @@ class PanelMenuMixin:
                 "name": "Рассылки",
                 "url": nav["mailings_url"],
                 "is_active": current_path.startswith(nav["mailings_url"].rstrip("/")),
+            },
+            {
+                "name": "Настройки",
+                "url": nav["settings_url"],
+                "is_active": nav["is_settings_section"],
             },
             {"name": "Администрирование", "url": admin_url, "is_active": current_path.startswith("/admin/")},
         ]
@@ -286,8 +513,11 @@ class EntityDetailTabsMixin:
 class EntityActionMixin:
     entity_action_scope_field = ""
 
-    def _actions_redirect(self) -> str:
-        return f"{self.request.path}?tab=actions"
+    def _actions_redirect(self, action_id=None) -> str:
+        url = f"{self.request.path}?tab=actions"
+        if action_id:
+            url += f"#entity-action-{action_id}"
+        return url
 
     def _entity_actions_qs(self):
         return OrgAction.objects.filter(**{self.entity_action_scope_field: self.object})
@@ -342,7 +572,7 @@ class EntityActionMixin:
                 item.updated_by = request.user
                 item.save()
                 messages.success(request, "Действие добавлено.")
-                return HttpResponseRedirect(self._actions_redirect())
+                return HttpResponseRedirect(self._actions_redirect(item.pk))
             messages.error(request, "Проверьте поля действия.")
             context = self.get_context_data(
                 entity_action_form=form,
@@ -362,7 +592,7 @@ class EntityActionMixin:
                 updated.updated_by = request.user
                 updated.save()
                 messages.success(request, "Действие обновлено.")
-                return HttpResponseRedirect(self._actions_redirect())
+                return HttpResponseRedirect(self._actions_redirect(item.pk))
             messages.error(request, "Проверьте поля редактирования действия.")
             context = self.get_context_data(
                 entity_action_form=form,
@@ -393,7 +623,7 @@ class EntityActionMixin:
             item.status = next_status
             item.updated_by = request.user
             item.save()
-            return HttpResponseRedirect(self._actions_redirect())
+            return HttpResponseRedirect(self._actions_redirect(item_id))
         if action == "apply_action_template":
             template_id = request.POST.get("template_id", "").strip()
             template = ActionTemplate.objects.filter(pk=template_id).first()
@@ -572,17 +802,13 @@ class OriListView(PanelAuthMixin, PanelMenuMixin, ListView):
     paginate_by = 20
 
     def get_queryset(self):
-        qs = (
-            Ori.objects.select_related("responsible_person")
-            .prefetch_related(
-                Prefetch(
-                    "org_actions",
-                    queryset=OrgAction.objects.order_by("deadline", "pk"),
-                ),
-            )
-            .all()
+        archive_filter = _archive_filter_value(self.request)
+        qs = annotate_ori_list(
+            Ori.objects.select_related("responsible_person", "orm_vendor")
+            .prefetch_related(org_actions_prefetch(), status_links_prefetch())
             .order_by("name")
         )
+        qs = _apply_archive_filter(qs, archive_filter)
         query = self.request.GET.get("q", "").strip()
         if query:
             qs = qs.filter(
@@ -601,6 +827,7 @@ class OriListView(PanelAuthMixin, PanelMenuMixin, ListView):
         context = super().get_context_data(**kwargs)
         context["search_query"] = self.request.GET.get("q", "").strip()
         context["selected_mine"] = _is_truthy_mine(self.request.GET.get("mine", ""))
+        context["selected_archive"] = _archive_filter_value(self.request)
         for ori in context.get("oris", []):
             _sync_org_actions_overdue(list(ori.org_actions.all()))
         return context
@@ -612,7 +839,13 @@ class TelecomOperatorListView(PanelAuthMixin, PanelMenuMixin, ListView):
     paginate_by = 20
 
     def get_queryset(self):
-        qs = TelecomOperator.objects.select_related("responsible_person").order_by("name")
+        archive_filter = _archive_filter_value(self.request)
+        qs = annotate_telecom_list(
+            TelecomOperator.objects.select_related("responsible_person")
+            .prefetch_related(org_actions_prefetch(), status_links_prefetch())
+            .order_by("name")
+        )
+        qs = _apply_archive_filter(qs, archive_filter)
         query = self.request.GET.get("q", "").strip()
         if query:
             qs = qs.filter(
@@ -628,7 +861,22 @@ class TelecomOperatorListView(PanelAuthMixin, PanelMenuMixin, ListView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["search_query"] = self.request.GET.get("q", "").strip()
+        context["selected_archive"] = _archive_filter_value(self.request)
+        for operator in context.get("telecom_operators", []):
+            _sync_org_actions_overdue(list(operator.org_actions.all()))
         return context
+
+
+class TelecomOperatorImportView(PanelAuthMixin, View):
+    def post(self, request, *args, **kwargs):
+        uploaded = request.FILES.get("file")
+        if uploaded is None:
+            return JsonResponse({"error": "Файл не выбран"}, status=400)
+        if not uploaded.name.lower().endswith(".docx"):
+            return JsonResponse({"error": "Допустимы только файлы .docx"}, status=400)
+
+        result = import_telecom_operator_from_docx(uploaded, created_by=request.user)
+        return JsonResponse(result.as_dict())
 
 
 class TelecomOperatorDetailView(PanelAuthMixin, PanelMenuMixin, EntityActionMixin, DetailView):
@@ -658,12 +906,31 @@ class TelecomOperatorDetailView(PanelAuthMixin, PanelMenuMixin, EntityActionMixi
             self.object.operator_contacts.select_related("created_by")
             .order_by("-updated_at", "-id")
         )
-        licenses = list(
-            TelecomOperatorLicense.objects.filter(telecom_operator_id=self.object.pk)
-            .prefetch_related("orders__order_number")
-            .order_by("title", "pk")
+        licenses_qs = TelecomOperatorLicense.objects.filter(telecom_operator_id=self.object.pk)
+        context["operator_networks"] = list(
+            TelecomNetwork.objects.filter(telecom_operator_id=self.object.pk)
+            .select_related("name")
+            .prefetch_related(
+                Prefetch(
+                    "licenses",
+                    queryset=licenses_qs.order_by("title", "pk"),
+                ),
+                Prefetch(
+                    "orders",
+                    queryset=LicenseOrder.objects.select_related("order_number"),
+                ),
+            )
+            .order_by("name__name")
         )
-        context["operator_licenses"] = licenses
+        context["unlinked_operator_licenses"] = list(
+            licenses_qs.filter(telecom_network__isnull=True).order_by("title", "pk")
+        )
+        context["telecom_network_form"] = kwargs.get("telecom_network_form") or TelecomNetworkForm(
+            telecom_operator=self.object,
+        )
+        context["network_modal_open"] = kwargs.get("network_modal_open", False)
+        if kwargs.get("force_licenses_tab"):
+            context["active_tab"] = "licenses"
         return context
 
     def post(self, request, *args, **kwargs):
@@ -688,10 +955,30 @@ class TelecomOperatorDetailView(PanelAuthMixin, PanelMenuMixin, EntityActionMixi
                         f"Найдено: {result['parsed_from_list']}, "
                         f"создано: {result['created']}, "
                         f"обновлено: {result['updated']}, "
+                        f"пропущено по территории: {result['skipped_territory']}, "
                         f"ошибок: {result['errors']}."
                     ),
                 )
                 return HttpResponseRedirect(redirect_to_licenses)
+
+        if action == "create_network":
+            redirect_to_licenses = f"{self.request.path}?tab=licenses"
+            form = TelecomNetworkForm(request.POST, telecom_operator=self.object)
+            if form.is_valid():
+                network = form.save(commit=False)
+                network.telecom_operator = self.object
+                network.created_by = request.user
+                network.updated_by = request.user
+                network.save()
+                messages.success(request, "Сеть связи добавлена.")
+                return HttpResponseRedirect(redirect_to_licenses)
+            messages.error(request, "Выберите наименование сети связи.")
+            context = self.get_context_data(
+                telecom_network_form=form,
+                network_modal_open=True,
+                force_licenses_tab=True,
+            )
+            return self.render_to_response(context)
 
         if action in {"save_contact", "delete_contact"}:
             redirect_to_contacts = f"{self.request.path}?tab=contacts"
@@ -748,6 +1035,27 @@ class TelecomOperatorDetailView(PanelAuthMixin, PanelMenuMixin, EntityActionMixi
         return HttpResponseRedirect(self.request.path)
 
 
+class TelecomOperatorCreateView(PanelAuthMixin, PanelMenuMixin, CreateView):
+    template_name = "panel/telecom_operator_form.html"
+    form_class = TelecomOperatorForm
+
+    def form_valid(self, form):
+        form.instance.created_by = self.request.user
+        form.instance.updated_by = self.request.user
+        response = super().form_valid(form)
+        messages.success(self.request, "Оператор связи успешно добавлен.")
+        return response
+
+    def get_success_url(self):
+        return reverse_lazy("panel:telecom_operator_detail", kwargs={"pk": self.object.pk})
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["form_title"] = "Добавление оператора связи"
+        context["submit_label"] = "Создать оператора связи"
+        return context
+
+
 class TelecomOperatorUpdateView(PanelAuthMixin, PanelMenuMixin, UpdateView):
     template_name = "panel/telecom_operator_form.html"
     form_class = TelecomOperatorForm
@@ -755,6 +1063,17 @@ class TelecomOperatorUpdateView(PanelAuthMixin, PanelMenuMixin, UpdateView):
 
     def get_queryset(self):
         return TelecomOperator.objects.all()
+
+    def post(self, request, *args, **kwargs):
+        self.object = self.get_object()
+        if request.POST.get("action", "").strip() == "toggle_archive":
+            self.object.is_archived = not self.object.is_archived
+            self.object.updated_by = request.user
+            self.object.save(update_fields=["is_archived", "updated_by", "updated_at"])
+            state = "в архив" if self.object.is_archived else "из архива"
+            messages.success(request, f"Оператор связи перемещен {state}.")
+            return HttpResponseRedirect(self.request.path)
+        return super().post(request, *args, **kwargs)
 
     def form_valid(self, form):
         form.instance.updated_by = self.request.user
@@ -769,6 +1088,7 @@ class TelecomOperatorUpdateView(PanelAuthMixin, PanelMenuMixin, UpdateView):
         context = super().get_context_data(**kwargs)
         context["form_title"] = f"Редактирование: {self.object.name}"
         context["submit_label"] = "Сохранить изменения"
+        context["archive_toggle_label"] = "Вернуть из архива" if self.object.is_archived else "Переместить в архив"
         return context
 
 
@@ -777,134 +1097,79 @@ class TelecomOperatorLicenseDetailView(PanelAuthMixin, PanelMenuMixin, DetailVie
     context_object_name = "license"
 
     def get_queryset(self):
-        return TelecomOperatorLicense.objects.select_related("telecom_operator")
+        return TelecomOperatorLicense.objects.select_related("telecom_operator", "telecom_network__name")
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["license_form"] = kwargs.get("license_form") or TelecomOperatorLicenseForm(instance=self.object)
-        context["license_edit_mode"] = kwargs.get("license_edit_mode", False)
-        context["psi_form"] = kwargs.get("psi_form") or PsiAssignmentForm()
-        context["license_order_form"] = kwargs.get("license_order_form") or LicenseOrderForm()
-        context["license_order_modal_open"] = kwargs.get("license_order_modal_open", False)
-        context["psi_modal_open"] = kwargs.get("psi_modal_open", False)
-        context["psi_modal_order"] = kwargs.get("psi_modal_order")
-        context["psi_modal_mode"] = kwargs.get("psi_modal_mode", "create")
-        context["psi_modal_psi"] = kwargs.get("psi_modal_psi")
-        context["psi_status_choices"] = Psi._meta.get_field("status").choices
-        context["psi_assigned_today"] = timezone.localdate()
-        orders = list(
-            self.object.orders.select_related("order_number", "orm_vendor").prefetch_related(
-                Prefetch(
-                    "psis",
-                    queryset=Psi.objects.select_related("responsible", "created_by").order_by("-assigned_date", "-pk"),
-                )
-            ).order_by("pk")
-        )
-        order_number_ids = {order.order_number_id for order in orders if order.order_number_id}
-        busy_ranges_by_order_number = {}
-        if order_number_ids:
-            related_psis = (
-                Psi.objects.select_related("license_order__order_number", "license_order__license__telecom_operator")
-                .filter(license_order__order_number_id__in=order_number_ids)
-                .exclude(start_date__isnull=True, end_date__isnull=True)
-            )
-            for psi in related_psis:
-                start_date = psi.start_date or psi.end_date
-                end_date = psi.end_date or psi.start_date
-                if not start_date or not end_date:
-                    continue
-                if end_date < start_date:
-                    start_date, end_date = end_date, start_date
-                operator_name = "—"
-                if psi.license_order_id and psi.license_order.license_id:
-                    operator_name = psi.license_order.license.telecom_operator.name
-                busy_ranges_by_order_number.setdefault(psi.license_order.order_number_id, []).append(
-                    {
-                        "start": start_date.isoformat(),
-                        "end": end_date.isoformat(),
-                        "operator_name": operator_name,
-                    }
-                )
-        busy_ranges_by_order = {}
-        history_payload_by_order = {}
-        for order in orders:
-            all_psis = list(order.psis.all())
-            all_psis.sort(
-                key=lambda psi: (
-                    psi.end_date is None,
-                    -(psi.end_date.toordinal() if psi.end_date else date.min.toordinal()),
-                    -psi.pk,
-                )
-            )
-            active_statuses = {"assigned", "overdue", "in_progress"}
-            visible_psis = [psi for psi in all_psis if psi.status in active_statuses]
-            latest_success = next((psi for psi in all_psis if psi.status == "successful"), None)
-            latest_failed = next((psi for psi in all_psis if psi.status == "failed"), None)
-            for candidate in (latest_success, latest_failed):
-                if candidate and candidate not in visible_psis:
-                    visible_psis.append(candidate)
-            order.linked_psis = visible_psis
-            order.history_psis = [psi for psi in all_psis if psi not in visible_psis]
-            history_payload_by_order[str(order.pk)] = [
-                {
-                    "id": psi.pk,
-                    "status": psi.get_status_display(),
-                    "status_value": psi.status,
-                    "responsible": str(psi.responsible) if psi.responsible_id else "—",
-                    "responsible_id": psi.responsible_id or "",
-                    "start_date": psi.start_date.strftime("%d.%m.%Y") if psi.start_date else "—",
-                    "start_iso": psi.start_date.isoformat() if psi.start_date else "",
-                    "end_date": psi.end_date.strftime("%d.%m.%Y") if psi.end_date else "—",
-                    "end_iso": psi.end_date.isoformat() if psi.end_date else "",
-                    "created_by": (
-                        psi.created_by.get_full_name().strip() or psi.created_by.username
-                        if psi.created_by_id
-                        else "—"
-                    ),
-                    "created_at": psi.created_at.strftime("%d.%m.%Y %H:%M") if psi.created_at else "—",
-                    "order_id": order.pk,
-                    "order_name": order.order_number.name,
-                }
-                for psi in order.history_psis
-            ]
-            busy_ranges_by_order[str(order.pk)] = busy_ranges_by_order_number.get(order.order_number_id, [])
-            today = timezone.localdate()
-            for psi in all_psis:
-                if psi.end_date:
-                    delta_days = (psi.end_date - today).days
-                    if delta_days > 0:
-                        psi.schedule_hint = f"до завершения {delta_days} дн."
-                    elif delta_days == 0:
-                        psi.schedule_hint = "завершается сегодня"
-                    else:
-                        psi.schedule_hint = f"просрочено на {abs(delta_days)} дн."
-                elif psi.start_date and psi.start_date > today:
-                    psi.schedule_hint = f"старт через {(psi.start_date - today).days} дн."
-                else:
-                    psi.schedule_hint = "сроки не заданы"
-        context["license_orders"] = orders
-        context["psi_busy_ranges_by_order"] = busy_ranges_by_order
-        context["psi_history_by_order"] = history_payload_by_order
         return context
 
     def post(self, request, *args, **kwargs):
         self.object = self.get_object()
         action = request.POST.get("action", "").strip()
         if action == "save_license_info":
+            redirect_to_licenses = _operator_licenses_url(self.object.telecom_operator_id)
             form = TelecomOperatorLicenseForm(request.POST, instance=self.object)
             if form.is_valid():
                 obj = form.save(commit=False)
                 obj.updated_by = request.user
                 obj.save()
                 messages.success(request, "Информация по лицензии обновлена.")
+                return HttpResponseRedirect(redirect_to_licenses)
+            messages.error(request, "Проверьте корректность заполненных полей.")
+            context = self.get_context_data(license_form=form)
+            return self.render_to_response(context)
+        if action == "delete_license":
+            operator_pk = self.object.telecom_operator_id
+            self.object.delete()
+            messages.success(request, "Лицензия удалена.")
+            return HttpResponseRedirect(_operator_licenses_url(operator_pk))
+        return HttpResponseRedirect(self.request.path)
+
+
+class TelecomNetworkDetailView(PanelAuthMixin, PanelMenuMixin, DetailView):
+    template_name = "panel/telecom_network_detail.html"
+    context_object_name = "network"
+
+    def get_queryset(self):
+        return TelecomNetwork.objects.select_related("name", "telecom_operator")
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["network_form"] = kwargs.get("network_form") or TelecomNetworkEditForm(instance=self.object)
+        context["psi_form"] = kwargs.get("psi_form") or PsiAssignmentForm()
+        context["order_form"] = kwargs.get("order_form") or LicenseOrderForm()
+        context["order_modal_open"] = kwargs.get("order_modal_open", False)
+        context["psi_modal_open"] = kwargs.get("psi_modal_open", False)
+        context["psi_modal_order"] = kwargs.get("psi_modal_order")
+        context["psi_modal_mode"] = kwargs.get("psi_modal_mode", "create")
+        context["psi_modal_psi"] = kwargs.get("psi_modal_psi")
+        context["psi_status_choices"] = Psi._meta.get_field("status").choices
+        context["psi_assigned_today"] = timezone.localdate()
+        context.update(_populate_orders_psi_context(_orders_qs_for_network(self.object)))
+        return context
+
+    def post(self, request, *args, **kwargs):
+        self.object = self.get_object()
+        action = request.POST.get("action", "").strip()
+        orders_qs = _orders_qs_for_network(self.object)
+        psi_scope = _psi_scope_for_network(self.object)
+
+        if action == "save_network_info":
+            form = TelecomNetworkEditForm(request.POST, instance=self.object)
+            if form.is_valid():
+                obj = form.save(commit=False)
+                obj.updated_by = request.user
+                obj.save()
+                messages.success(request, "Информация по сети связи обновлена.")
                 return HttpResponseRedirect(self.request.path)
             messages.error(request, "Проверьте корректность заполненных полей.")
-            context = self.get_context_data(license_form=form, license_edit_mode=True)
+            context = self.get_context_data(network_form=form)
             return self.render_to_response(context)
         if action == "update_order_vendor":
             order_id = request.POST.get("order_id", "").strip()
             orm_vendor_id = request.POST.get("orm_vendor", "").strip()
-            order = self.object.orders.filter(pk=order_id).first()
+            order = orders_qs.filter(pk=order_id).first()
             if not order:
                 messages.error(request, "Приказ не найден.")
                 return HttpResponseRedirect(self.request.path)
@@ -920,18 +1185,23 @@ class TelecomOperatorLicenseDetailView(PanelAuthMixin, PanelMenuMixin, DetailVie
             form = LicenseOrderForm(request.POST)
             if form.is_valid():
                 order = form.save(commit=False)
-                order.license = self.object
+                order.telecom_operator_id = self.object.telecom_operator_id
+                order.telecom_network_id = self.object.pk
                 order.created_by = request.user
                 order.updated_by = request.user
                 order.save()
-                messages.success(request, "Приказ лицензии добавлен.")
+                messages.success(request, "Приказ добавлен.")
                 return HttpResponseRedirect(self.request.path)
             messages.error(request, "Проверьте поля нового приказа.")
-            context = self.get_context_data(license_order_form=form, license_order_modal_open=True)
+            context = self.get_context_data(order_form=form, order_modal_open=True)
             return self.render_to_response(context)
         if action == "create_psi":
             order_id = request.POST.get("license_order_id", "").strip()
-            order = self.object.orders.filter(pk=order_id).select_related("order_number").first() if order_id else None
+            order = (
+                orders_qs.filter(pk=order_id).select_related("order_number").first()
+                if order_id
+                else None
+            )
             if not order:
                 messages.error(request, "Приказ для назначения ПСИ не найден.")
                 return HttpResponseRedirect(self.request.path)
@@ -956,7 +1226,8 @@ class TelecomOperatorLicenseDetailView(PanelAuthMixin, PanelMenuMixin, DetailVie
         if action == "edit_psi":
             psi_id = request.POST.get("psi_id", "").strip()
             psi = (
-                Psi.objects.filter(pk=psi_id, license_order__license_id=self.object.pk)
+                Psi.objects.filter(pk=psi_id)
+                .filter(psi_scope)
                 .select_related("license_order__order_number")
                 .first()
             )
@@ -981,7 +1252,7 @@ class TelecomOperatorLicenseDetailView(PanelAuthMixin, PanelMenuMixin, DetailVie
             return self.render_to_response(context)
         if action == "delete_psi":
             psi_id = request.POST.get("psi_id", "").strip()
-            psi = Psi.objects.filter(pk=psi_id, license_order__license_id=self.object.pk).first()
+            psi = Psi.objects.filter(pk=psi_id).filter(psi_scope).first()
             if not psi:
                 messages.error(request, "ПСИ не найдено.")
                 return HttpResponseRedirect(self.request.path)
@@ -992,7 +1263,8 @@ class TelecomOperatorLicenseDetailView(PanelAuthMixin, PanelMenuMixin, DetailVie
             psi_id = request.POST.get("psi_id", "").strip()
             new_status = request.POST.get("status", "").strip()
             psi = (
-                Psi.objects.filter(pk=psi_id, license_order__license_id=self.object.pk)
+                Psi.objects.filter(pk=psi_id)
+                .filter(psi_scope)
                 .select_related("license_order")
                 .first()
             )
@@ -1054,6 +1326,24 @@ class OriDetailView(PanelAuthMixin, PanelMenuMixin, EntityActionMixin, OriContac
     def post(self, request, *args, **kwargs):
         self.object = self.get_object()
         action = request.POST.get("action", "").strip()
+        if action == "change_interaction_type":
+            try:
+                with transaction.atomic():
+                    source_name = self.object.name
+                    target = _transfer_ori_to_data_source(self.object)
+            except IntegrityError:
+                messages.error(
+                    request,
+                    "Перенос не выполнен: в «Источниках данных» уже есть запись с таким ИНН и наименованием.",
+                )
+                return HttpResponseRedirect(self.request.path)
+
+            messages.success(
+                request,
+                f"Объект «{source_name}» перенесен в группу «Источники данных».",
+            )
+            return HttpResponseRedirect(reverse("panel:data_source_detail", kwargs={"pk": target.pk}))
+
         psi_actions = {"create_psi", "edit_psi", "delete_psi", "update_psi_status"}
         if action in psi_actions:
             if action == "create_psi":
@@ -1152,6 +1442,16 @@ class OriUpdateView(PanelAuthMixin, PanelMenuMixin, UpdateView):
     def get_queryset(self):
         return Ori.objects.all()
 
+    def post(self, request, *args, **kwargs):
+        self.object = self.get_object()
+        if request.POST.get("action", "").strip() == "toggle_archive":
+            self.object.is_archived = not self.object.is_archived
+            self.object.save(update_fields=["is_archived"])
+            state = "в архив" if self.object.is_archived else "из архива"
+            messages.success(request, f"ОРИ перемещена {state}.")
+            return HttpResponseRedirect(self.request.path)
+        return super().post(request, *args, **kwargs)
+
     def form_valid(self, form):
         response = super().form_valid(form)
         messages.success(self.request, "Изменения сохранены.")
@@ -1164,6 +1464,7 @@ class OriUpdateView(PanelAuthMixin, PanelMenuMixin, UpdateView):
         context = super().get_context_data(**kwargs)
         context["form_title"] = f"Редактирование: {self.object.name}"
         context["submit_label"] = "Сохранить изменения"
+        context["archive_toggle_label"] = "Вернуть из архива" if self.object.is_archived else "Переместить в архив"
         return context
 
 
@@ -1173,7 +1474,13 @@ class DataSourceListView(PanelAuthMixin, PanelMenuMixin, ListView):
     paginate_by = 20
 
     def get_queryset(self):
-        qs = DataSource.objects.select_related("responsible_person", "industry").order_by("name")
+        archive_filter = _archive_filter_value(self.request)
+        qs = annotate_data_source_list(
+            DataSource.objects.select_related("responsible_person", "industry")
+            .prefetch_related(org_actions_prefetch(), status_links_prefetch())
+            .order_by("name")
+        )
+        qs = _apply_archive_filter(qs, archive_filter)
         query = self.request.GET.get("q", "").strip()
         if query:
             qs = qs.filter(
@@ -1192,6 +1499,9 @@ class DataSourceListView(PanelAuthMixin, PanelMenuMixin, ListView):
         context = super().get_context_data(**kwargs)
         context["search_query"] = self.request.GET.get("q", "").strip()
         context["selected_mine"] = _is_truthy_mine(self.request.GET.get("mine", ""))
+        context["selected_archive"] = _archive_filter_value(self.request)
+        for data_source in context.get("data_sources", []):
+            _sync_org_actions_overdue(list(data_source.org_actions.all()))
         return context
 
 
@@ -1201,6 +1511,9 @@ class DataSourceCommentMixin(EntityDetailTabsMixin):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context.update(self._entity_detail_context())
+        context["entity_contacts"] = (
+            self.object.contacts.select_related("created_by").order_by("-updated_at", "-id")
+        )
         context["entity_comments"] = (
             self.object.comments.select_related("author").order_by("commented_at", "id")
         )
@@ -1208,6 +1521,46 @@ class DataSourceCommentMixin(EntityDetailTabsMixin):
 
     def post(self, request, *args, **kwargs):
         self.object = self.get_object()
+        action = request.POST.get("action", "").strip()
+
+        if action in {"save_contact", "delete_contact"}:
+            redirect_to_contacts = f"{self.request.path}?tab=contacts"
+            contact_id = request.POST.get("contact_id", "").strip()
+            contact = self.object.contacts.filter(pk=contact_id).first() if contact_id else None
+
+            if action == "delete_contact":
+                if contact:
+                    contact.delete()
+                else:
+                    messages.error(request, "Контакт не найден.")
+                return HttpResponseRedirect(redirect_to_contacts)
+
+            first_name = request.POST.get("first_name", "").strip()
+            if not first_name:
+                messages.error(request, "Поле «Имя» обязательно.")
+                return HttpResponseRedirect(redirect_to_contacts)
+
+            payload = {
+                "position": request.POST.get("position", "").strip(),
+                "first_name": first_name,
+                "phone": request.POST.get("phone", "").strip(),
+                "email": request.POST.get("email", "").strip(),
+                "extra_info": request.POST.get("extra_info", "").strip(),
+            }
+            if contact:
+                for key, value in payload.items():
+                    setattr(contact, key, value)
+                contact.updated_by = request.user
+                contact.save()
+            else:
+                Contact.objects.create(
+                    data_source=self.object,
+                    created_by=request.user,
+                    updated_by=request.user,
+                    **payload,
+                )
+            return HttpResponseRedirect(redirect_to_contacts)
+
         text = request.POST.get("comment_text", "").strip()
         if text:
             Comment.objects.create(
@@ -1229,6 +1582,28 @@ class DataSourceDetailView(PanelAuthMixin, PanelMenuMixin, EntityActionMixin, Da
 
     def get_queryset(self):
         return DataSource.objects.select_related("industry", "responsible_person")
+
+    def post(self, request, *args, **kwargs):
+        self.object = self.get_object()
+        if request.POST.get("action", "").strip() == "change_interaction_type":
+            try:
+                with transaction.atomic():
+                    source_name = self.object.name
+                    target = _transfer_data_source_to_ori(self.object)
+            except IntegrityError:
+                messages.error(
+                    request,
+                    "Перенос не выполнен: в группе «ОРИ» уже есть запись с таким ИНН и наименованием.",
+                )
+                return HttpResponseRedirect(self.request.path)
+
+            messages.success(
+                request,
+                f"Объект «{source_name}» перенесен в группу «ОРИ».",
+            )
+            return HttpResponseRedirect(reverse("panel:ori_detail", kwargs={"pk": target.pk}))
+
+        return super().post(request, *args, **kwargs)
 
 
 class DataSourceCreateView(PanelAuthMixin, PanelMenuMixin, CreateView):
@@ -1257,6 +1632,16 @@ class DataSourceUpdateView(PanelAuthMixin, PanelMenuMixin, UpdateView):
     def get_queryset(self):
         return DataSource.objects.all()
 
+    def post(self, request, *args, **kwargs):
+        self.object = self.get_object()
+        if request.POST.get("action", "").strip() == "toggle_archive":
+            self.object.is_archived = not self.object.is_archived
+            self.object.save(update_fields=["is_archived"])
+            state = "в архив" if self.object.is_archived else "из архива"
+            messages.success(request, f"Источник данных перемещен {state}.")
+            return HttpResponseRedirect(self.request.path)
+        return super().post(request, *args, **kwargs)
+
     def form_valid(self, form):
         response = super().form_valid(form)
         messages.success(self.request, "Изменения сохранены.")
@@ -1269,6 +1654,7 @@ class DataSourceUpdateView(PanelAuthMixin, PanelMenuMixin, UpdateView):
         context = super().get_context_data(**kwargs)
         context["form_title"] = f"Редактирование: {self.object.name}"
         context["submit_label"] = "Сохранить изменения"
+        context["archive_toggle_label"] = "Вернуть из архива" if self.object.is_archived else "Переместить в архив"
         return context
 
 
@@ -1290,8 +1676,34 @@ class CalendarPlaceholderView(PanelPlaceholderView):
     page_title = "Календарь"
 
 
-class StatisticsPlaceholderView(PanelPlaceholderView):
+class StatisticsView(PanelAuthMixin, PanelMenuMixin, TemplateView):
+    template_name = "panel/statistics.html"
     page_title = "Статистика"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["page_title"] = self.page_title
+        context["statistics_cards"] = [
+            {
+                "label": "Операторы связи",
+                "count": TelecomOperator.objects.count(),
+                "url": reverse("panel:telecom_operator_list"),
+                "variant": "telecom",
+            },
+            {
+                "label": "ОРИ",
+                "count": Ori.objects.count(),
+                "url": reverse("panel:ori_list"),
+                "variant": "ori",
+            },
+            {
+                "label": "Источники данных",
+                "count": DataSource.objects.count(),
+                "url": reverse("panel:data_source_list"),
+                "variant": "data_source",
+            },
+        ]
+        return context
 
 
 class ContactsListView(PanelAuthMixin, PanelMenuMixin, ListView):
@@ -1337,10 +1749,30 @@ class LicensesPlaceholderView(PanelPlaceholderView):
     page_title = "Лицензии"
 
 
-class ReportsPlaceholderView(StatisticsPlaceholderView):
-    pass
+class ReportsPlaceholderView(PanelPlaceholderView):
+    page_title = "Отчёты"
 
 
 class UsersPlaceholderView(PanelPlaceholderView):
     page_title = "Пользователи"
+
+
+class AppSettingsView(PanelAuthMixin, PanelMenuMixin, UpdateView):
+    model = AppSettings
+    form_class = AppSettingsForm
+    template_name = "panel/app_settings.html"
+    success_url = reverse_lazy("panel:app_settings")
+
+    def get_object(self, queryset=None):
+        return AppSettings.load()
+
+    def form_valid(self, form):
+        messages.success(self.request, "Настройки сохранены.")
+        return super().form_valid(form)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["form_title"] = "Настройки приложения"
+        context["submit_label"] = "Сохранить"
+        return context
     pass

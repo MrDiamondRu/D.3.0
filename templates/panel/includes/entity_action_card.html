@@ -1,4 +1,4 @@
-<article class="panel-org-action-card panel-org-action-card-{{ action.status }}">
+<article class="panel-org-action-card panel-org-action-card-{{ action.status }}" id="entity-action-{{ action.pk }}">
   <div class="panel-org-action-layout">
     <form method="post" class="panel-org-action-status-form">
       {% csrf_token %}

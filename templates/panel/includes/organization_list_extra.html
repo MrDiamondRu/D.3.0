@@ -1,0 +1,44 @@
+<div class="panel-organization-extra panel-organization-extra-info">
+  {% if list_card_kind == "telecom" %}
+    <div class="panel-organization-extra-row">
+      <span>действующих лицензий: {{ item.list_active_licenses_count|default:0 }}</span>
+    </div>
+    <div class="panel-organization-extra-row">
+      <span>
+        Последнее действие:
+        {% if item.list_last_history_at %}{{ item.list_last_history_at|date:"d.m.Y" }}{% else %}—{% endif %}
+      </span>
+    </div>
+    <div class="panel-organization-extra-row panel-organization-extra-row-empty" aria-hidden="true"></div>
+  {% elif list_card_kind == "ori" %}
+    <div class="panel-organization-extra-row">
+      <span>ТС ОРМ: {{ item.orm_vendor|default:"—" }}</span>
+    </div>
+    <div class="panel-organization-extra-row">
+      <span>Реестр: {% if item.in_registry %}{{ item.in_registry }}{% else %}нет{% endif %}</span>
+    </div>
+    <div class="panel-organization-extra-row">
+      <span>
+        Последнее действие:
+        {% if item.list_last_history_at %}{{ item.list_last_history_at|date:"d.m.Y" }}{% else %}—{% endif %}
+      </span>
+    </div>
+  {% else %}
+    <div class="panel-organization-extra-row">
+      <span>Отрасль: {{ item.industry|default:"—" }}</span>
+    </div>
+    <div class="panel-organization-extra-row">
+      <span>
+        Последнее действие:
+        {% if item.list_last_history_at %}{{ item.list_last_history_at|date:"d.m.Y" }}{% else %}—{% endif %}
+      </span>
+    </div>
+    <div class="panel-organization-extra-row panel-organization-extra-row-empty" aria-hidden="true"></div>
+  {% endif %}
+</div>
+
+<div class="panel-organization-statuses">
+  {% for link in item.status_links.all %}
+    <span class="panel-org-status-tag panel-org-status-tag-{{ link.status.kind }}">{{ link.status.text }}</span>
+  {% endfor %}
+</div>

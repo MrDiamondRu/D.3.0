@@ -12,8 +12,8 @@
     </div>
   </section>
 
-  <section class="panel-card">
-    <div class="panel-tabs" data-tabs>
+  <div class="panel-tabs-layout" data-tabs>
+    <section class="panel-card panel-tabs-card">
       <div class="panel-tabs-nav" role="tablist" aria-label="Разделы информации">
         <button type="button" class="panel-tab-btn{% if active_tab == 'info' %} panel-tab-btn-active{% endif %}" role="tab" aria-selected="{% if active_tab == 'info' %}true{% else %}false{% endif %}" data-tab-target="info">Информация</button>
         <button type="button" class="panel-tab-btn{% if active_tab == 'actions' %} panel-tab-btn-active{% endif %}" role="tab" aria-selected="{% if active_tab == 'actions' %}true{% else %}false{% endif %}" data-tab-target="actions">Действия</button>
@@ -21,8 +21,17 @@
         <button type="button" class="panel-tab-btn{% if active_tab == 'licenses' %} panel-tab-btn-active{% endif %}" role="tab" aria-selected="{% if active_tab == 'licenses' %}true{% else %}false{% endif %}" data-tab-target="licenses">Лицензии</button>
         <button type="button" class="panel-tab-btn{% if active_tab == 'history' %} panel-tab-btn-active{% endif %}" role="tab" aria-selected="{% if active_tab == 'history' %}true{% else %}false{% endif %}" data-tab-target="history">История</button>
       </div>
+      <div class="panel-tabs-licenses-actions{% if active_tab != 'licenses' %} panel-hidden{% endif %}" data-tab-licenses-actions>
+        <button type="button" class="panel-btn panel-btn-primary" data-network-create>Добавить сеть связи</button>
+        <form method="post" class="panel-tabs-card-form">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="sync_licenses_rkn">
+          <button type="submit" class="panel-btn panel-btn-secondary">Обновить из РКН</button>
+        </form>
+      </div>
+    </section>
 
-      <div class="panel-tab-content{% if active_tab == 'info' %} panel-tab-content-active{% endif %}" data-tab-panel="info">
+    <section class="panel-card panel-tab-content{% if active_tab == 'info' %} panel-tab-content-active{% endif %}" data-tab-panel="info">
         <div class="panel-detail-grid">
           <div class="panel-detail-item">
             <span>Номер дела</span>
@@ -60,13 +69,13 @@
             Редактировать
           </a>
         </div>
-      </div>
+    </section>
 
-      <div class="panel-tab-content{% if active_tab == 'actions' %} panel-tab-content-active{% endif %}" data-tab-panel="actions">
+    <section class="panel-card panel-tab-content{% if active_tab == 'actions' %} panel-tab-content-active{% endif %}" data-tab-panel="actions">
         {% include "panel/includes/entity_actions_tab.html" %}
-      </div>
+    </section>
 
-      <div class="panel-tab-content{% if active_tab == 'contacts' %} panel-tab-content-active{% endif %}" data-tab-panel="contacts">
+    <section class="panel-card panel-tab-content{% if active_tab == 'contacts' %} panel-tab-content-active{% endif %}" data-tab-panel="contacts">
         {% if operator_contacts %}
           <section class="panel-card panel-contact-list-card">
             <div class="panel-contact-list-head">
@@ -149,69 +158,51 @@
             <button type="button" class="panel-btn panel-btn-primary" data-contact-create>Добавить</button>
           </div>
         {% endif %}
-      </div>
-      <div class="panel-tab-content{% if active_tab == 'licenses' %} panel-tab-content-active{% endif %}" data-tab-panel="licenses">
-        {% if operator_licenses %}
+    </section>
+
+    <div class="panel-tab-content panel-tab-content-stack{% if active_tab == 'licenses' %} panel-tab-content-active{% endif %}" data-tab-panel="licenses">
+      {% for network in operator_networks %}
+        <section class="panel-card">
+          <div class="panel-network-card-head">
+            <div class="panel-network-card-title-block">
+              <a href="{% url 'panel:telecom_network_detail' network.pk %}" class="panel-network-card-title-link">{{ network.name }}</a>
+              {% if network.comment %}
+                <p class="panel-network-card-comment">{{ network.comment }}</p>
+              {% endif %}
+            </div>
+            <div class="panel-network-card-orders">
+              {% for order in network.orders.all %}
+                <span class="panel-license-order-tag panel-license-order-tag-inactive">{{ order.order_number.name }}</span>
+              {% empty %}
+                <span class="panel-license-order-tag panel-license-order-tag-inactive">Нет приказов</span>
+              {% endfor %}
+            </div>
+          </div>
+          {% if network.licenses.all %}
+            <div class="panel-license-cards">
+              {% for license in network.licenses.all %}
+                {% include "panel/includes/telecom_operator_license_card.html" with license=license %}
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="panel-empty">К этой сети связи лицензии не привязаны.</div>
+          {% endif %}
+        </section>
+      {% endfor %}
+
+      {% if unlinked_operator_licenses %}
+        <section class="panel-card">
+          <h3 class="panel-network-section-title">Лицензии не привязанные к сети связи</h3>
           <div class="panel-license-cards">
-            {% for license in operator_licenses %}
-              <a
-                class="panel-license-card"
-                href="{% url 'panel:telecom_license_detail' license.pk %}"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <div class="panel-license-grid">
-                  <div class="panel-license-cell panel-license-cell-name">
-                    <span>Название лицензии</span>
-                    <strong>{{ license.title }}</strong>
-                  </div>
-                  <div class="panel-license-cell panel-license-cell-orders">
-                    <span>Приказы со статусами</span>
-                    <div class="panel-license-orders">
-                      {% for order in license.orders.all %}
-                        <span class="panel-license-order-tag panel-license-order-tag-inactive">
-                          {{ order.order_number.name }}
-                        </span>
-                      {% empty %}
-                        <span class="panel-license-order-tag panel-license-order-tag-inactive">Нет приказов</span>
-                      {% endfor %}
-                    </div>
-                  </div>
-                  <div class="panel-license-cell">
-                    <span>Номер лицензии</span>
-                    <strong>{{ license.number|default:"—" }}</strong>
-                  </div>
-                  <div class="panel-license-cell">
-                    <span>Дата окончания действия лицензии</span>
-                    <strong>{{ license.end_date|date:"d.m.Y"|default:"—" }}</strong>
-                  </div>
-                  <div class="panel-license-cell">
-                    <span>Статус лицензии</span>
-                    <strong>{{ license.get_status_display }}</strong>
-                  </div>
-                </div>
-              </a>
+            {% for license in unlinked_operator_licenses %}
+              {% include "panel/includes/telecom_operator_license_card.html" with license=license %}
             {% endfor %}
           </div>
-          <div class="panel-license-actions">
-            <form method="post">
-              {% csrf_token %}
-              <input type="hidden" name="action" value="sync_licenses_rkn">
-              <button type="submit" class="panel-btn panel-btn-secondary">Обновить из РКН</button>
-            </form>
-          </div>
-        {% else %}
-          <div class="panel-empty">Лицензии пока не добавлены.</div>
-          <div class="panel-license-actions">
-            <form method="post">
-              {% csrf_token %}
-              <input type="hidden" name="action" value="sync_licenses_rkn">
-              <button type="submit" class="panel-btn panel-btn-secondary">Обновить из РКН</button>
-            </form>
-          </div>
-        {% endif %}
-      </div>
-      <div class="panel-tab-content{% if active_tab == 'history' %} panel-tab-content-active{% endif %}" data-tab-panel="history">
+        </section>
+      {% endif %}
+    </div>
+
+    <section class="panel-card panel-tab-content{% if active_tab == 'history' %} panel-tab-content-active{% endif %}" data-tab-panel="history">
         {% if audit_events %}
           <div class="panel-audit-table-wrap">
             <table class="panel-audit-table">
@@ -240,9 +231,8 @@
         {% else %}
           <div class="panel-empty">История действий пока пуста.</div>
         {% endif %}
-      </div>
-    </div>
-  </section>
+    </section>
+  </div>
 
   <section class="panel-card panel-chat-card">
     <div class="panel-chat-header">
@@ -253,7 +243,7 @@
       {% for comment in operator_comments %}
         <article class="panel-chat-message{% if comment.author_id == request.user.id %} panel-chat-message-own{% endif %}">
           <div class="panel-chat-message-meta">
-            <span class="panel-chat-author">{{ comment.author }}</span>
+            <span class="panel-chat-author">{{ comment.author.get_full_name|default:comment.author.username }}</span>
             <time>{{ comment.commented_at|date:"d.m.Y H:i" }}</time>
           </div>
           <div class="panel-chat-bubble">{{ comment.text|linebreaksbr }}</div>
@@ -281,6 +271,7 @@
       if (!tabs) return;
       var buttons = tabs.querySelectorAll("[data-tab-target]");
       var panels = tabs.querySelectorAll("[data-tab-panel]");
+      var licensesActions = tabs.querySelector("[data-tab-licenses-actions]");
       var params = new URLSearchParams(window.location.search);
       var initialTab = params.get("tab");
 
@@ -297,6 +288,20 @@
             panel.getAttribute("data-tab-panel") === target
           );
         });
+        if (licensesActions) {
+          licensesActions.classList.toggle("panel-hidden", target !== "licenses");
+        }
+      }
+
+      function scrollToEntityActionAnchor() {
+        var hash = window.location.hash;
+        if (!hash || hash.indexOf("#entity-action-") !== 0) return;
+        var target = document.querySelector(hash);
+        if (!target) return;
+        activateTab("actions");
+        window.requestAnimationFrame(function () {
+          target.scrollIntoView({ block: "center", behavior: "auto" });
+        });
       }
 
       buttons.forEach(function (button) {
@@ -312,7 +317,11 @@
           var cleanUrl = window.location.pathname + (window.location.hash || "");
           window.history.replaceState({}, document.title, cleanUrl);
         }
+      } else if (window.location.hash.indexOf("#entity-action-") === 0) {
+        activateTab("actions");
       }
+
+      scrollToEntityActionAnchor();
 
       tabs.querySelectorAll("[data-copy]").forEach(function (btn) {
         btn.addEventListener("click", function () {
@@ -387,9 +396,6 @@
         if (contactModalClose) {
           contactModalClose.addEventListener("click", closeContactModal);
         }
-        contactModal.addEventListener("click", function (e) {
-          if (e.target === contactModal) closeContactModal();
-        });
       }
 
       var rknModal = document.querySelector("[data-rkn-error-modal]");
@@ -401,9 +407,25 @@
         rknModalCloseButtons.forEach(function (btn) {
           btn.addEventListener("click", closeRknModal);
         });
-        rknModal.addEventListener("click", function (e) {
-          if (e.target === rknModal) closeRknModal();
+      }
+
+      var networkModal = document.querySelector("[data-network-modal]");
+      var networkModalClose = document.querySelector("[data-network-modal-close]");
+      if (networkModal) {
+        function openNetworkModal() {
+          networkModal.hidden = false;
+        }
+        function closeNetworkModal() {
+          networkModal.hidden = true;
+        }
+        document.querySelectorAll("[data-network-create]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            openNetworkModal();
+          });
         });
+        if (networkModalClose) {
+          networkModalClose.addEventListener("click", closeNetworkModal);
+        }
       }
 
     });
@@ -440,6 +462,35 @@
         </label>
         <div class="panel-form-actions">
           <button type="submit" class="panel-btn panel-btn-primary">Сохранить</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  <div class="panel-modal-backdrop" data-network-modal {% if not network_modal_open %}hidden{% endif %}>
+    <div class="panel-modal-card" role="dialog" aria-modal="true" aria-label="Добавить сеть связи">
+      <div class="panel-modal-head">
+        <h3>Добавить сеть связи</h3>
+        <button type="button" class="panel-modal-close" data-network-modal-close aria-label="Закрыть">✕</button>
+      </div>
+      <form method="post" class="panel-form">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="create_network">
+        <label class="panel-form-field">
+          <span class="panel-form-label">{{ telecom_network_form.name.label }}</span>
+          {{ telecom_network_form.name }}
+          {% if telecom_network_form.name.errors %}
+            <span class="panel-form-error">{{ telecom_network_form.name.errors|striptags }}</span>
+          {% endif %}
+        </label>
+        <label class="panel-form-field">
+          <span class="panel-form-label">{{ telecom_network_form.comment.label }}</span>
+          {{ telecom_network_form.comment }}
+          {% if telecom_network_form.comment.errors %}
+            <span class="panel-form-error">{{ telecom_network_form.comment.errors|striptags }}</span>
+          {% endif %}
+        </label>
+        <div class="panel-form-actions">
+          <button type="submit" class="panel-btn panel-btn-primary">Добавить</button>
         </div>
       </form>
     </div>

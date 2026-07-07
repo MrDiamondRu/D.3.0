@@ -74,9 +74,6 @@
         modal.hidden = true;
       }
       if (closeBtn) closeBtn.addEventListener("click", close);
-      modal.addEventListener("click", function (e) {
-        if (e.target === modal) close();
-      });
     }
 
     bindModal(listModal, "[data-action-template-list-open]", listClose);

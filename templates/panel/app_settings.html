@@ -1,0 +1,37 @@
+{% extends "panel/base.html" %}
+
+{% block title %}{{ form_title }} | {{ panel_title }}{% endblock %}
+
+{% block content %}
+  <section class="panel-toolbar">
+    <div class="panel-toolbar-title">
+      <h1>{{ form_title }}</h1>
+      <p>Общие параметры работы приложения</p>
+    </div>
+  </section>
+
+  <section class="panel-card">
+    {% if form.non_field_errors %}
+      <div class="panel-form-errors">
+        {% for error in form.non_field_errors %}
+          <p>{{ error }}</p>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    <form method="post" class="panel-form">
+      {% csrf_token %}
+      {% for hidden_field in form.hidden_fields %}
+        {{ hidden_field }}
+      {% endfor %}
+
+      <div class="panel-form-grid">
+        {% include "panel/includes/panel_form_field.html" with field=form.responsibility_region full_width=True %}
+      </div>
+
+      <div class="panel-form-actions">
+        <button type="submit" class="panel-btn panel-btn-primary">{{ submit_label }}</button>
+      </div>
+    </form>
+  </section>
+{% endblock %}

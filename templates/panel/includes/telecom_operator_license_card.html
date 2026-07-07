@@ -1,0 +1,19 @@
+<a
+  class="panel-license-card{% if license.status == 'inactive' %} panel-license-card-inactive{% endif %}"
+  href="{% url 'panel:telecom_license_detail' license.pk %}"
+>
+  <div class="panel-license-grid panel-license-grid-compact">
+    <div class="panel-license-cell panel-license-cell-name">
+      <span>Название</span>
+      <strong>{{ license.title }}</strong>
+    </div>
+    <div class="panel-license-cell">
+      <span>Номер</span>
+      <strong>{{ license.number|default:"—" }}</strong>
+    </div>
+    <div class="panel-license-cell">
+      <span>Окончание</span>
+      <strong>{{ license.end_date|date:"d.m.Y"|default:"—" }}</strong>
+    </div>
+  </div>
+</a>

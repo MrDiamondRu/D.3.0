@@ -22,6 +22,17 @@
       });
     }
 
+    function scrollToEntityActionAnchor() {
+      var hash = window.location.hash;
+      if (!hash || hash.indexOf("#entity-action-") !== 0) return;
+      var target = document.querySelector(hash);
+      if (!target) return;
+      activateTab("actions");
+      window.requestAnimationFrame(function () {
+        target.scrollIntoView({ block: "center", behavior: "auto" });
+      });
+    }
+
     buttons.forEach(function (button) {
       button.addEventListener("click", function () {
         activateTab(button.getAttribute("data-tab-target"));
@@ -33,7 +44,11 @@
       if (window.history && window.history.replaceState) {
         window.history.replaceState({}, document.title, window.location.pathname + (window.location.hash || ""));
       }
+    } else if (window.location.hash.indexOf("#entity-action-") === 0) {
+      activateTab("actions");
     }
+
+    scrollToEntityActionAnchor();
 
     tabs.querySelectorAll("[data-copy]").forEach(function (btn) {
       btn.addEventListener("click", function () {
@@ -108,9 +123,6 @@
       if (contactModalClose) {
         contactModalClose.addEventListener("click", closeContactModal);
       }
-      contactModal.addEventListener("click", function (e) {
-        if (e.target === contactModal) closeContactModal();
-      });
     }
   });
 </script>

@@ -22,19 +22,23 @@ urlpatterns = [
     path("data-sources/<int:pk>/", views.DataSourceDetailView.as_view(), name="data_source_detail"),
     # Операторы связи
     path("telecom-operators/", views.TelecomOperatorListView.as_view(), name="telecom_operator_list"),
+    path("telecom-operators/add/", views.TelecomOperatorCreateView.as_view(), name="telecom_operator_add"),
+    path("telecom-operators/import/", views.TelecomOperatorImportView.as_view(), name="telecom_operator_import"),
     path("telecom-operators/<int:pk>/edit/", views.TelecomOperatorUpdateView.as_view(), name="telecom_operator_edit"),
     path("telecom-operators/<int:pk>/", views.TelecomOperatorDetailView.as_view(), name="telecom_operator_detail"),
     path("telecom-licenses/<int:pk>/", views.TelecomOperatorLicenseDetailView.as_view(), name="telecom_license_detail"),
+    path("telecom-networks/<int:pk>/", views.TelecomNetworkDetailView.as_view(), name="telecom_network_detail"),
     # Прочие разделы
     path("implementation/", views.ImplementationPlaceholderView.as_view(), name="implementation"),
     path("calendar/", views.CalendarPlaceholderView.as_view(), name="calendar"),
-    path("statistics/", views.StatisticsPlaceholderView.as_view(), name="statistics"),
+    path("statistics/", views.StatisticsView.as_view(), name="statistics"),
     path("contacts/", views.ContactsListView.as_view(), name="contacts"),
     path("mailings/", views.MailingsPlaceholderView.as_view(), name="mailings"),
     path("psi/", views.PsiPlaceholderView.as_view(), name="psi"),
     path("licenses/", views.LicensesPlaceholderView.as_view(), name="licenses"),
     path("reports/", views.ReportsPlaceholderView.as_view(), name="reports"),
     path("users/", views.UsersPlaceholderView.as_view(), name="users"),
+    path("settings/", views.AppSettingsView.as_view(), name="app_settings"),
     # Старые URL (organizations/*) → новые
     path(
         "organizations/",
@@ -71,6 +75,10 @@ urlpatterns = [
     path(
         "organizations/telecom-operators/",
         RedirectView.as_view(pattern_name="panel:telecom_operator_list", permanent=True),
+    ),
+    path(
+        "organizations/telecom-operators/add/",
+        RedirectView.as_view(pattern_name="panel:telecom_operator_add", permanent=True),
     ),
     path(
         "organizations/telecom-operators/<int:pk>/edit/",

@@ -55,10 +55,10 @@
               type="text"
               class="panel-input"
               data-entity-action-deadline-picker
-              placeholder="Выберите дату"
+              placeholder="дд.мм.гггг"
               autocomplete="off"
             >
-            <span class="panel-form-help panel-form-help-inline">Дни с другими действиями подсвечены цветом.</span>
+            <span class="panel-form-help panel-form-help-inline">Можно выбрать в календаре или ввести дату вручную.</span>
           </div>
         </label>
         <label class="panel-form-field panel-form-field-full">
@@ -159,6 +159,25 @@
       });
     }
 
+    function syncDeadlineFromPicker() {
+      if (!deadlinePicker || !deadlineInput) return;
+      if (deadlinePicker.selectedDates && deadlinePicker.selectedDates.length) {
+        deadlineInput.value = toIsoDate(deadlinePicker.selectedDates[0]);
+        return;
+      }
+      var visibleInput = deadlinePicker.altInput || deadlinePickerInput;
+      var rawValue = visibleInput ? visibleInput.value.trim() : "";
+      if (!rawValue) {
+        deadlineInput.value = "";
+        return;
+      }
+      var parsed = deadlinePicker.parseDate(rawValue, deadlinePicker.config.altFormat);
+      if (!parsed) {
+        parsed = deadlinePicker.parseDate(rawValue, deadlinePicker.config.dateFormat);
+      }
+      deadlineInput.value = parsed ? toIsoDate(parsed) : "";
+    }
+
     function initDeadlineCalendar() {
       if (!window.flatpickr || !deadlinePickerInput || !deadlineInput) return;
       if (window.flatpickr.l10ns && window.flatpickr.l10ns.ru) {
@@ -172,9 +191,18 @@
         dateFormat: "Y-m-d",
         altInput: true,
         altFormat: "d.m.Y",
+        allowInput: true,
         defaultDate: defaultDate,
-        onChange: function (selectedDates) {
-          deadlineInput.value = selectedDates.length ? toIsoDate(selectedDates[0]) : "";
+        onChange: function () {
+          syncDeadlineFromPicker();
+          paintBusyDates(deadlinePicker);
+        },
+        onValueUpdate: function () {
+          syncDeadlineFromPicker();
+          paintBusyDates(deadlinePicker);
+        },
+        onClose: function () {
+          syncDeadlineFromPicker();
           paintBusyDates(deadlinePicker);
         },
         onReady: function () {
@@ -254,14 +282,9 @@
     });
 
     if (modalClose) modalClose.addEventListener("click", closeModal);
-    modal.addEventListener("click", function (e) {
-      if (e.target === modal) closeModal();
-    });
 
     form.addEventListener("submit", function () {
-      if (deadlinePicker && deadlinePicker.selectedDates && deadlinePicker.selectedDates.length) {
-        deadlineInput.value = toIsoDate(deadlinePicker.selectedDates[0]);
-      }
+      syncDeadlineFromPicker();
     });
 
     initDeadlineCalendar();

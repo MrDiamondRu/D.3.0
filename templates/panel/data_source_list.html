@@ -15,6 +15,11 @@
         class="panel-input panel-input-compact panel-search-compact"
         placeholder="Поиск..."
       >
+      <select name="archive" class="panel-input panel-select">
+        <option value="active" {% if selected_archive == "active" %}selected{% endif %}>Активные</option>
+        <option value="archived" {% if selected_archive == "archived" %}selected{% endif %}>Архив</option>
+        <option value="all" {% if selected_archive == "all" %}selected{% endif %}>Все</option>
+      </select>
       <button class="panel-btn panel-btn-secondary" type="submit">Применить фильтры</button>
       <a class="panel-btn panel-btn-secondary" href="{% url 'panel:data_source_list' %}">Сброс</a>
     </form>
@@ -24,17 +29,8 @@
   <section class="panel-card">
     <div class="panel-organization-cards">
       {% for data_source in data_sources %}
-        <article class="panel-organization-card" data-href="{% url 'panel:data_source_detail' data_source.pk %}">
-          {% include "panel/includes/card_base.html" with item=data_source type_label="Источник данных" use_org_type_icon=False fallback_icon_url="" %}
-          <div class="panel-organization-extra">
-            <div class="panel-organization-extra-row">
-              <span>Ответственное лицо: {{ data_source.responsible_person|default:"—" }}</span>
-            </div>
-            <div class="panel-organization-extra-row">
-              <span>Отрасль: {{ data_source.industry|default:"—" }}</span>
-            </div>
-          </div>
-        </article>
+        {% url 'panel:data_source_detail' data_source.pk as detail_url %}
+        {% include "panel/includes/organization_list_card.html" with item=data_source detail_url=detail_url list_card_kind="data_source" %}
       {% empty %}
         <div class="panel-empty">Источники данных не найдены.</div>
       {% endfor %}
@@ -44,11 +40,11 @@
   {% if is_paginated %}
     <nav class="panel-pagination">
       {% if page_obj.has_previous %}
-        <a class="panel-btn panel-btn-secondary" href="?q={{ search_query|urlencode }}{% if selected_mine %}&mine=1{% endif %}&page={{ page_obj.previous_page_number }}">Назад</a>
+        <a class="panel-btn panel-btn-secondary" href="?q={{ search_query|urlencode }}&archive={{ selected_archive }}{% if selected_mine %}&mine=1{% endif %}&page={{ page_obj.previous_page_number }}">Назад</a>
       {% endif %}
       <span class="panel-pagination-info">Страница {{ page_obj.number }} из {{ page_obj.paginator.num_pages }}</span>
       {% if page_obj.has_next %}
-        <a class="panel-btn panel-btn-secondary" href="?q={{ search_query|urlencode }}{% if selected_mine %}&mine=1{% endif %}&page={{ page_obj.next_page_number }}">Вперед</a>
+        <a class="panel-btn panel-btn-secondary" href="?q={{ search_query|urlencode }}&archive={{ selected_archive }}{% if selected_mine %}&mine=1{% endif %}&page={{ page_obj.next_page_number }}">Вперед</a>
       {% endif %}
     </nav>
   {% endif %}

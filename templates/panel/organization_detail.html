@@ -50,14 +50,6 @@
             <span>Номер в реестре</span>
             <strong>{{ ori.in_registry|default:"-" }}</strong>
           </div>
-          <div class="panel-detail-item">
-            <span>Ссылка на запись в реестре</span>
-            {% if ori.registry_record_url %}
-              <a class="panel-link panel-link-clean" href="{{ ori.registry_record_url }}" target="_blank" rel="noopener noreferrer">{{ ori.registry_record_url }}</a>
-            {% else %}
-              <strong>-</strong>
-            {% endif %}
-          </div>
           <div class="panel-detail-item panel-detail-item-full">
             <span>Адрес для корреспонденции</span>
             <strong>{{ ori.correspondence_address|default:"-" }}</strong>
@@ -65,6 +57,7 @@
         </div>
         <div class="panel-tab-panel-actions panel-tab-panel-actions-bottom">
           <a class="panel-btn panel-btn-primary" href="{% url 'panel:ori_edit' ori.pk %}">Редактировать</a>
+          <button type="button" class="panel-btn panel-btn-secondary" data-transfer-open>Изменить вид взаимодействия</button>
         </div>
       </div>
 
@@ -118,4 +111,44 @@
   {% include "panel/includes/ori_psi_modals.html" %}
   {% include "panel/includes/entity_action_modal.html" %}
   {% include "panel/includes/entity_action_template_modals.html" %}
+  <div class="panel-modal-backdrop" data-transfer-modal hidden>
+    <div class="panel-modal-card" role="dialog" aria-modal="true" aria-label="Изменение вида взаимодействия">
+      <div class="panel-modal-head">
+        <h3>Подтверждение переноса</h3>
+        <button type="button" class="panel-modal-close" data-transfer-close aria-label="Закрыть">✕</button>
+      </div>
+      <p class="panel-modal-text">
+        Вы хотите перенести "{{ ori.name }}" в группу "Источники данных". При переносе, все поля, не применимые к целевой группе будут удалены. Вы уверены, что хотите продолжить?
+      </p>
+      <div class="panel-modal-actions">
+        <form method="post">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="change_interaction_type">
+          <button type="submit" class="panel-btn panel-btn-primary">Продолжить</button>
+        </form>
+        <button type="button" class="panel-btn panel-btn-secondary" data-transfer-close>Отмена</button>
+      </div>
+    </div>
+  </div>
+  <script>
+    (function () {
+      var modal = document.querySelector("[data-transfer-modal]");
+      var openBtn = document.querySelector("[data-transfer-open]");
+      if (!modal || !openBtn) return;
+      var closeButtons = document.querySelectorAll("[data-transfer-close]");
+
+      function openModal() {
+        modal.hidden = false;
+      }
+
+      function closeModal() {
+        modal.hidden = true;
+      }
+
+      openBtn.addEventListener("click", openModal);
+      closeButtons.forEach(function (btn) {
+        btn.addEventListener("click", closeModal);
+      });
+    })();
+  </script>
 {% endblock %}

@@ -1,0 +1,24 @@
+{% extends "panel/base.html" %}
+
+{% block title %}{{ panel_title }}{% endblock %}
+
+{% block content %}
+  <section class="panel-statistics-dashboard">
+    <header class="panel-statistics-header">
+      <h1>Обзор организаций</h1>
+      <p>Общее количество записей по типам</p>
+    </header>
+
+    <div class="panel-statistics-grid">
+      {% for card in statistics_cards %}
+        <a href="{{ card.url }}" class="panel-stat-card panel-stat-card-{{ card.variant }}">
+          <div class="panel-stat-card-top">
+            <span class="panel-stat-card-label">{{ card.label }}</span>
+            <span class="panel-stat-card-link">Перейти →</span>
+          </div>
+          <div class="panel-stat-card-value">{{ card.count }}</div>
+        </a>
+      {% endfor %}
+    </div>
+  </section>
+{% endblock %}

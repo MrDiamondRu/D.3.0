@@ -272,17 +272,7 @@
     if (psiHistoryPrev) psiHistoryPrev.addEventListener("click", function () { historyPage -= 1; renderHistory(); });
     if (psiHistoryNext) psiHistoryNext.addEventListener("click", function () { historyPage += 1; renderHistory(); });
     if (psiHistoryModalClose) psiHistoryModalClose.addEventListener("click", closeHistory);
-    if (psiHistoryModal) {
-      psiHistoryModal.addEventListener("click", function (e) {
-        if (e.target === psiHistoryModal) closeHistory();
-      });
-    }
     if (psiModalClose) psiModalClose.addEventListener("click", closePsiModal);
-    if (psiModal) {
-      psiModal.addEventListener("click", function (e) {
-        if (e.target === psiModal) closePsiModal();
-      });
-    }
 
     initRangeCalendar();
 
