@@ -1,0 +1,91 @@
+---
+description: Стандарты Makefile — команды dev/deploy, вывод, secrets, SSH, Docker
+globs: Makefile
+alwaysApply: false
+---
+
+# Makefile — команды D3.0 CRM
+
+## Переменные (не дублировать)
+
+| Переменная | Назначение |
+|------------|------------|
+| `PROJECT_SLUG` | `d3_0` — префикс docker compose |
+| `SECRETS_DIR` | `secrets/` |
+| `DEPLOY_ENV` | `secrets/deploy.env` — хост, путь, домен, IP |
+| `ENV_PROD` / `ENV_DEV` | Django/Postgres для prod/dev |
+| `DC_DEV` | `compose.dev.yml` |
+| `DC_PROD` | `compose.prod.yml --env-file deploy.env` |
+| `SSH_KEY_SOURCE` | ключ в репо (`secrets/id_ed25519_deploy`) |
+| `SSH_KEY_USE` | `~/.ssh/d3_0_deploy` — реально используется SSH |
+| `REMOTE_COMPOSE` / `REMOTE_MIGRATE` | команды на сервере через `sg docker` + `flock` |
+
+`-include $(DEPLOY_ENV)` + `export` — обязательно в начале.
+
+## Вывод (обязательно для пользовательских команд)
+
+Использовать UI-хелперы, не голый `echo`:
+
+- `log_banner` — заголовок операции
+- `log_step,N,M,текст` — этап `[1/5]`
+- `log_cmd` — показать команду (dim)
+- `log_ok` / `log_warn` / `log_info` — результат шага
+- `log_done` — успешное завершение
+
+Перед реальной командой — `$(call log_step,...)` и `$(call log_cmd,...)`, сама команда с префиксом `@`.
+
+Интерактивные команды (`createsuperuser`, `logs -f`) — только `log_section`, без лишних обёрток.
+
+В SSH-скриптах на сервере **не** передавать `$(GREEN)` и др. — ANSI не интерпретируется.
+
+## Набор команд
+
+**Dev:** `start`, `stop`, `refresh`, `refresh-nocache`, `logs`, `shell`, `migrate`, `makemigrations`, `createsuperuser`, `seed`, `import-csv`, `dev-rebuild-db`
+
+**Prod локально:** `prod-up`
+
+**Deploy:** `ssh-setup` → `ssh-test` → `server-init` → `deploy` → `export-dev-db` / `import-prod-db` / `reset-prod-db` / `deploy-initial`
+
+Новую команду добавлять в `.PHONY` и в `help`.
+
+## Правила реализации
+
+```makefile
+# ✅ Зависимость от ssh-fix-key-perms для любого SSH/SCP/rsync
+deploy-target: ssh-fix-key-perms
+	$(call log_banner,...)
+	$(call log_step,1,3,...)
+	@команда
+
+# ✅ Вложенные make — без дублирования вывода
+@$(MAKE) --no-print-directory other-target
+
+# ✅ Флаг
+ifdef IMPORT_DB
+	@$(MAKE) --no-print-directory import-prod-db
+endif
+```
+
+**SSH:** ключ копируется в `~/.ssh/d3_0_deploy`; на Windows — `icacls` в `ssh-fix-key-perms`. `ssh-setup` для первого входа — с `PreferredAuthentications=password`, без `-i`.
+
+**Deploy:** rsync исключает `secrets/*` (кроме example); `env.prod` и `deploy.env` копируются отдельно через `scp`. На сервере Docker — только через `sg docker -c "cd $(DEPLOY_PATH) && ..."`.
+
+**Миграции prod:** только через `REMOTE_MIGRATE` (`flock`); **не** в `command` web-контейнера в `compose.prod.yml`. Порядок: `up` → `migrate` → (опционально) `loaddata`.
+
+**Дамп БД:** `dumpdata auth.user crm --natural-foreign --natural-primary` — без `admin.logentry`, `contenttypes`, `sessions`. Импорт: migrate → loaddata → `up -d web`.
+
+**Первый деплой:** `deploy-initial` = `export-dev-db` → `reset-prod-db` → `deploy` → `import-prod-db`.
+
+## Проверки перед выполнением
+
+```makefile
+@test -f $(ENV_PROD) || (echo "$(RED)Создайте $(ENV_PROD) из env.prod.example$(NC)" && exit 1)
+```
+
+Для deploy-команд — проверять `$(DEPLOY_ENV)` и наличие `$(DEV_DUMP)` где нужно.
+
+## Compose prod (согласованность)
+
+- Caddy: `{$DEPLOY_DOMAIN}`, порты `${DEPLOY_PUBLIC_IP}:80/443`
+- Postgres: `env_file: secrets/env.prod`, `POSTGRES_HOST=db`
+- Web: `collectstatic` + gunicorn (без migrate в startup)
